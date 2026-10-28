@@ -107,6 +107,7 @@
   .lbl { font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; fill: var(--ink); }
   .arrow { cursor: move; }
   .handle { cursor: pointer; }
+  .handle.wh { cursor: ew-resize; }
 
   @media (max-width: 860px) {
     main { flex-direction: column; }
@@ -121,7 +122,7 @@
 
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
-  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，搭建大气受热过程模型。允许出错。</div>
+  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
     <span class="sep"></span>
@@ -142,7 +143,7 @@
       <g id="arrows"></g>
       <g id="ui"></g>
     </svg>
-    <div class="tip">拖动箭头移动 · 拖动两端圆点改变方向和长短 · 按住 Shift 以 15° 对齐</div>
+    <div class="tip">拖动箭头移动 · 拖动两端圆点改变方向和长短 · 拖动侧边方块改变粗细（或按 [ ]） · 按住 Shift 以 15° 对齐</div>
   </div>
 
   <aside>
@@ -242,8 +243,8 @@
     // 固定辐射（底图自带）
     scatter(110, 420);
     fixed(110, 580, -Math.PI * .65, 80, 4, SW, '地面反射');
-    fixed(480, 452, -Math.PI / 2, 292, 4, LW, '射向宇宙的地面辐射', 'left');
-    fixed(360, 280, -Math.PI / 2.8, 100, 8, SW, '云层反射（太阳辐射）', 'end');
+    fixed(480, 452, -Math.PI / 2, 292, 4, LW, '射向宇宙的地面辐射', 'above');
+    fixed(360, 280, -Math.PI / 2.8, 100, 8, SW, '云层反射（太阳辐射）', 'left');
     fixed(680, 228, -Math.PI / 2, 150, 7, LW, '射向宇宙的大气辐射', 'side');
   }
 
@@ -279,6 +280,7 @@
     if (mode === 'end') label(g, text, x2 + 10, y2 + 4, 18, '#1e2b3a', '#fff', 'start');
     else if (mode === 'left') label(g, text, (x + x2) / 2 - 12, (y + y2) / 2 + 6, 18, '#1e2b3a', '#fff', 'end');
     else if (mode === 'side') label(g, text, (x + x2) / 2 + 14, (y + y2) / 2, 18, '#1e2b3a', '#fff', 'start');
+    else if (mode === 'above') label(g, text, x2, y2 - 14, 18);
     else label(g, text, (x + x2) / 2, (y + y2) / 2 - 14, 18);
   }
 
@@ -306,9 +308,22 @@
     const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
     const { vertical, side } = labelSide(a);
     if (vertical) {
-      return label(parent, text, mx + side * (CFG[a.key].w + 10), my + 6, size, '#1e2b3a', '#fff', side > 0 ? 'start' : 'end');
+      return label(parent, text, mx + side * (aw(a) + 10), my + 6, size, '#1e2b3a', '#fff', side > 0 ? 'start' : 'end');
     }
-    return label(parent, text, mx, my - CFG[a.key].w - 10, size);
+    return label(parent, text, mx, my - aw(a) - 10, size);
+  }
+
+  // 粗细：每支箭头可单独设置，旧数据回退到素材默认值
+  const W_MIN = 3, W_MAX = 40, W_GAP = 14;
+  const aw = a => a.w ?? CFG[a.key].w;
+  // 粗细手柄放在箭头中点、与标签相反的一侧
+  function widthHandle(a) {
+    const dx = a.x2 - a.x1, dy = a.y2 - a.y1, len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len, ny = dx / len;
+    const { vertical, side } = labelSide(a);
+    if (vertical ? Math.sign(nx) === side : ny < 0) { nx = -nx; ny = -ny; }
+    const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2, d = aw(a) / 2 + W_GAP;
+    return { mx, my, nx, ny, x: mx + nx * d, y: my + ny * d };
   }
 
   // ---------- 箭头层 ----------
@@ -319,9 +334,9 @@
       const c = CFG[a.key];
       const g = el('g', { class: 'arrow', 'data-id': a.id }, gArrows);
       if (a.id === selected) g.setAttribute('filter', 'url(#sel)');
-      el('line', { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, stroke: 'transparent', 'stroke-width': Math.max(34, c.w + 26), 'stroke-linecap': 'round', 'data-part': 'body' }, g);
+      el('line', { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, stroke: 'transparent', 'stroke-width': Math.max(34, aw(a) + 26), 'stroke-linecap': 'round', 'data-part': 'body' }, g);
       const shape = el('g', { 'pointer-events': 'none' }, g);
-      drawArrowShape(shape, a.x1, a.y1, a.x2, a.y2, c.w, c.color);
+      drawArrowShape(shape, a.x1, a.y1, a.x2, a.y2, aw(a), c.color);
       const t = placeLabel(g, a, c.label, 19);
       t.setAttribute('data-part', 'body');
     });
@@ -331,6 +346,13 @@
         el('circle', { cx: x, cy: y, r: 22, fill: 'transparent', class: 'handle', 'data-id': s.id, 'data-part': part }, gUI);
         el('circle', { cx: x, cy: y, r: 9, fill: f, stroke: st, 'stroke-width': 3, 'pointer-events': 'none' }, gUI);
       });
+      const h = widthHandle(s);
+      el('line', { x1: h.mx, y1: h.my, x2: h.x, y2: h.y, stroke: '#1f8fc4', 'stroke-width': 2, 'stroke-dasharray': '3 3', 'pointer-events': 'none' }, gUI);
+      el('circle', { cx: h.x, cy: h.y, r: 22, fill: 'transparent', class: 'handle wh', 'data-id': s.id, 'data-part': 'width' }, gUI);
+      const ang = Math.atan2(h.ny, h.nx) * 180 / Math.PI;
+      const hg = el('g', { transform: `translate(${h.x} ${h.y}) rotate(${ang})`, 'pointer-events': 'none' }, gUI);
+      el('rect', { x: -9, y: -9, width: 18, height: 18, rx: 3, fill: '#fff', stroke: '#1f8fc4', 'stroke-width': 3 }, hg);
+      el('path', { d: 'M-4,-3 L-4,3 M4,-3 L4,3', stroke: '#1f8fc4', 'stroke-width': 2, 'stroke-linecap': 'round' }, hg);
     }
     $('bDel').disabled = !s;
     $('bUndo').disabled = !undoStack.length;
@@ -421,7 +443,11 @@
     const a = arrows.find(x => x.id === drag.id);
     const p = toSvg(e.clientX, e.clientY);
     const o = drag.orig;
-    if (drag.part === 'body') {
+    if (drag.part === 'width') {
+      const h = widthHandle(o);
+      const d = Math.abs((p.x - h.mx) * h.nx + (p.y - h.my) * h.ny);
+      a.w = Math.round(clamp((d - W_GAP) * 2, W_MIN, W_MAX));
+    } else if (drag.part === 'body') {
       let dx = p.x - drag.start.x, dy = p.y - drag.start.y;
       dx = clamp(dx, -Math.min(o.x1, o.x2), W - Math.max(o.x1, o.x2));
       dy = clamp(dy, -Math.min(o.y1, o.y2), H - Math.max(o.y1, o.y2));
@@ -528,6 +554,11 @@
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
     else if (e.key === 'Escape') { selected = null; renderArrows(); }
+    else if ((e.key === '[' || e.key === ']') && selected !== null) {
+      const a = arrows.find(x => x.id === selected), before = snap();
+      a.w = clamp(aw(a) + (e.key === ']' ? 2 : -2), W_MIN, W_MAX);
+      commit(before); renderArrows();
+    }
   });
 
   // ---------- 保存图片（2 倍清晰度，带小组名与时间） ----------
