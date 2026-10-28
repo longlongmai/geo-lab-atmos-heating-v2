@@ -87,17 +87,6 @@
   }
   .group input:focus { border-color: var(--accent); }
 
-  .feedback { border-top: 1px solid var(--line); flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 10px; }
-  .feedback .empty { font-size: .85rem; color: var(--muted); padding: 2px 14px; line-height: 1.5; }
-  .feedback ul { list-style: none; padding: 0 10px; display: flex; flex-direction: column; gap: 6px; }
-  .feedback li {
-    font-size: .85rem; line-height: 1.45; padding: 7px 9px; border-radius: 8px; cursor: pointer;
-    border-left: 4px solid var(--ok); background: #eff8f2;
-  }
-  .feedback li.bad { border-left-color: var(--warn); background: #fff5e8; }
-  .feedback li.miss { border-left-color: #9aa9b8; background: #f1f4f7; cursor: default; }
-  .feedback li b { color: var(--navy); }
-  .score { margin: 0 12px 8px; padding: 8px 10px; border-radius: 8px; background: #e8f3fb; font-size: .9rem; color: var(--navy); font-weight: 600; }
 
   /* 拖拽幽灵 */
   .ghost {
@@ -118,7 +107,6 @@
   .lbl { font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; fill: var(--ink); }
   .arrow { cursor: move; }
   .handle { cursor: pointer; }
-  .ref { pointer-events: none; }
 
   @media (max-width: 860px) {
     main { flex-direction: column; }
@@ -133,7 +121,7 @@
 
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
-  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，搭建大气受热过程模型。允许出错，完成后再检查。</div>
+  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，搭建大气受热过程模型。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
     <span class="sep"></span>
@@ -141,9 +129,6 @@
     <button id="bRedo" title="重做 (Ctrl+Y)">↷ 重做</button>
     <button id="bDel" title="删除选中 (Delete)">🗑 删除</button>
     <button id="bClear">🔄 清空</button>
-    <span class="sep"></span>
-    <button id="bCheck">✅ 检查模型</button>
-    <button id="bRef" title="教师用：显示参考模型">👁 参考答案</button>
     <span class="sep"></span>
     <button id="bShot">📸 保存图片</button>
     <button id="bFull">⛶ 全屏</button>
@@ -154,7 +139,6 @@
   <div class="stage">
     <svg id="scene" viewBox="0 0 1000 625" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
       <g id="base"></g>
-      <g id="ref" class="ref" style="display:none"></g>
       <g id="arrows"></g>
       <g id="ui"></g>
     </svg>
@@ -168,10 +152,6 @@
     <div class="group">
       <label for="groupName">小组名称（会写在保存的图片上）</label>
       <input id="groupName" placeholder="例如：第 3 组" maxlength="20">
-    </div>
-    <div class="feedback" id="feedback">
-      <h2>模型检查</h2>
-      <p class="empty">搭建完成后点“检查模型”。检查开启后，移动箭头时会实时更新结果。</p>
     </div>
   </aside>
 </main>
@@ -196,59 +176,15 @@
   ];
   const CFG = Object.fromEntries(LIB.map(c => [c.key, c]));
 
-  // 参考模型（教师用）
-  const REF = [
-    { key: 'solar',             x1: 205, y1: 150, x2: 290, y2: 262 },
-    { key: 'atmosAbsorbSolar',  x1: 225, y1: 300, x2: 258, y2: 385 },
-    { key: 'surfaceSolar',      x1: 560, y1: 240, x2: 578, y2: 446 },
-    { key: 'atmosAbsorbGround', x1: 290, y1: 485, x2: 270, y2: 395 },
-    { key: 'backRadiation',     x1: 800, y1: 330, x2: 778, y2: 503 },
-    { key: 'groundLongwave',    x1: 900, y1: 584, x2: 950, y2: 450 },
-  ];
-
-  // 检查规则：r = 到地心距离；inward/outward = 指向地面/背离地面
-  const NEAR_GROUND = r => r < R_GROUND + 55;
-  const IN_ATMOS = r => r > R_GROUND + 25 && r < R_TOP - 8;
-  const ABOVE_TOP = r => r > R_TOP - 30;
-  const RULES = {
-    solar: [
-      [(a) => a.inward, '方向：太阳辐射应从太阳一侧射向地球'],
-      [(a) => ABOVE_TOP(a.r1), '起点：太阳辐射来自大气上界之外'],
-    ],
-    atmosAbsorbSolar: [
-      [(a) => a.inward, '方向：应向下进入大气'],
-      [(a) => IN_ATMOS(a.r2), '终点：被大气吸收的太阳辐射应止于大气中，不到达地面'],
-    ],
-    surfaceSolar: [
-      [(a) => a.inward, '方向：应穿过大气指向地面'],
-      [(a) => NEAR_GROUND(a.r2), '终点：箭头应到达地面'],
-      [(a) => !NEAR_GROUND(a.r1), '起点：应从大气中射来，而不是从地面出发'],
-    ],
-    groundLongwave: [
-      [(a) => NEAR_GROUND(a.r1), '起点：地面辐射从地面出发'],
-      [(a) => a.outward, '方向：地面辐射应由地面向上射出'],
-    ],
-    atmosAbsorbGround: [
-      [(a) => NEAR_GROUND(a.r1), '起点：应从地面出发'],
-      [(a) => a.outward, '方向：应由地面射向大气'],
-      [(a) => IN_ATMOS(a.r2), '终点：应止于大气中（被大气吸收）'],
-    ],
-    backRadiation: [
-      [(a) => !NEAR_GROUND(a.r1) && a.r1 < R_TOP + 20, '起点：大气逆辐射由大气发出'],
-      [(a) => a.inward, '方向：应由大气射向地面（与地面辐射方向相反）'],
-      [(a) => NEAR_GROUND(a.r2), '终点：应到达地面，对地面起保温作用'],
-    ],
-  };
-
   // ---------- 状态 ----------
   let arrows = [];
   let selected = null;
-  let showCloud = true, checking = false, showRef = false;
+  let showCloud = true;
   let undoStack = [], redoStack = [];
   const STORE = 'atmos-heating-model-v1';
 
   const $ = id => document.getElementById(id);
-  const svg = $('scene'), gBase = $('base'), gRef = $('ref'), gArrows = $('arrows'), gUI = $('ui');
+  const svg = $('scene'), gBase = $('base'), gArrows = $('arrows'), gUI = $('ui');
 
   const el = (tag, attrs = {}, parent) => {
     const e = document.createElementNS(NS, tag);
@@ -256,7 +192,6 @@
     if (parent) parent.appendChild(e);
     return e;
   };
-  const rOf = (x, y) => Math.hypot(x - EARTH.x, y - EARTH.y);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   // ---------- 底图 ----------
@@ -377,20 +312,10 @@
   }
 
   // ---------- 箭头层 ----------
-  function analyse(a) {
-    const r1 = rOf(a.x1, a.y1), r2 = rOf(a.x2, a.y2);
-    const mx = (a.x1 + a.x2) / 2 - EARTH.x, my = (a.y1 + a.y2) / 2 - EARTH.y, m = Math.hypot(mx, my);
-    const dx = a.x2 - a.x1, dy = a.y2 - a.y1, len = Math.hypot(dx, dy) || 1;
-    const radial = (dx * mx + dy * my) / (len * m);   // >0 背离地心
-    const info = { r1, r2, inward: radial < -0.45, outward: radial > 0.45 };
-    const problems = RULES[a.key].filter(([ok]) => !ok(info)).map(([, msg]) => msg);
-    return problems;
-  }
-
   function renderArrows() {
     gArrows.innerHTML = '';
     gUI.innerHTML = '';
-    arrows.forEach((a, i) => {
+    arrows.forEach(a => {
       const c = CFG[a.key];
       const g = el('g', { class: 'arrow', 'data-id': a.id }, gArrows);
       if (a.id === selected) g.setAttribute('filter', 'url(#sel)');
@@ -399,17 +324,6 @@
       drawArrowShape(shape, a.x1, a.y1, a.x2, a.y2, c.w, c.color);
       const t = placeLabel(g, a, c.label, 19);
       t.setAttribute('data-part', 'body');
-
-      if (checking) {
-        const probs = analyse(a);
-        const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
-        const { vertical, side } = labelSide(a);   // 徽标放在标签的另一侧
-        const bx = vertical ? mx - side * (c.w + 20) : mx, by = vertical ? my : my + c.w + 20;
-        const b = el('g', { 'pointer-events': 'none' }, gUI);
-        el('circle', { cx: bx, cy: by, r: 12, fill: probs.length ? '#e07b00' : '#2e9b57', stroke: '#fff', 'stroke-width': 2.5 }, b);
-        const tx = el('text', { x: bx, y: by + 5, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: '#fff' }, b);
-        tx.textContent = probs.length ? i + 1 : '✓';
-      }
     });
     const s = arrows.find(a => a.id === selected);
     if (s) {
@@ -422,48 +336,8 @@
     $('bUndo').disabled = !undoStack.length;
     $('bRedo').disabled = !redoStack.length;
     updateCounts();
-    if (checking) renderFeedback();
     save();
   }
-
-  function renderRef() {
-    gRef.innerHTML = '';
-    REF.forEach(r => {
-      const c = CFG[r.key];
-      const g = el('g', { opacity: .55 }, gRef);
-      drawArrowShape(g, r.x1, r.y1, r.x2, r.y2, c.w, c.color);
-      const t = placeLabel(g, { ...r }, c.label, 17);
-      t.style.fill = '#16324f';
-    });
-  }
-
-  // ---------- 检查反馈 ----------
-  function renderFeedback() {
-    const box = $('feedback');
-    if (!checking) {
-      box.innerHTML = '<h2>模型检查</h2><p class="empty">搭建完成后点“检查模型”。检查开启后，移动箭头时会实时更新结果。</p>';
-      return;
-    }
-    const items = arrows.map((a, i) => ({ a, i, probs: analyse(a) }));
-    const okCount = items.filter(x => !x.probs.length).length;
-    const missing = LIB.filter(c => !arrows.some(a => a.key === c.key));
-    let html = `<h2>模型检查 <small>实时</small></h2>`;
-    html += `<div class="score">已放置 ${arrows.length} 支，合理 ${okCount} 支 · 覆盖 ${LIB.length - missing.length}/${LIB.length} 种辐射</div><ul>`;
-    items.forEach(({ a, i, probs }) => {
-      const name = CFG[a.key].label;
-      html += probs.length
-        ? `<li class="bad" data-id="${a.id}"><b>${i + 1}. ${name}</b><br>${probs.join('<br>')}</li>`
-        : `<li data-id="${a.id}"><b>✓ ${name}</b>　位置与方向合理</li>`;
-    });
-    missing.forEach(c => { html += `<li class="miss"><b>还缺少：${c.label}</b></li>`; });
-    if (!arrows.length) html += '<li class="miss">画布上还没有箭头</li>';
-    html += '</ul>';
-    box.innerHTML = html;
-  }
-  $('feedback').addEventListener('click', e => {
-    const li = e.target.closest('li[data-id]');
-    if (li) { selected = Number(li.dataset.id); renderArrows(); }
-  });
 
   // ---------- 历史 ----------
   const snap = () => JSON.stringify(arrows);
@@ -642,17 +516,6 @@
     arrows = []; selected = null;
     commit(before); renderArrows();
   };
-  $('bCheck').onclick = () => {
-    checking = !checking;
-    $('bCheck').classList.toggle('on', checking);
-    $('bCheck').textContent = checking ? '✅ 关闭检查' : '✅ 检查模型';
-    renderArrows(); renderFeedback();
-  };
-  $('bRef').onclick = () => {
-    showRef = !showRef;
-    $('bRef').classList.toggle('on', showRef);
-    gRef.style.display = showRef ? '' : 'none';
-  };
   $('bFull').onclick = () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
@@ -672,7 +535,6 @@
     const clone = svg.cloneNode(true);
     clone.querySelector('#ui').innerHTML = '';
     clone.querySelectorAll('[filter="url(#sel)"]').forEach(n => n.removeAttribute('filter'));
-    if (!showRef) clone.querySelector('#ref').remove();
     clone.setAttribute('width', W); clone.setAttribute('height', H);
     const style = document.createElementNS(NS, 'style');
     style.textContent = `text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
@@ -715,7 +577,6 @@
   load();
   $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
   drawBase();
-  renderRef();
   buildLib();
   renderArrows();
 })();
