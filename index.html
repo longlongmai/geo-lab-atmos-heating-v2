@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大气受热过程 · 小组拖拽建模</title>
+<style>
+  :root {
+    --navy: #16324f;
+    --ink: #1e2b3a;
+    --muted: #5b6b7c;
+    --line: #cfe0ee;
+    --panel: #ffffff;
+    --bg: #eef5fb;
+    --accent: #1f8fc4;
+    --sw: #f5b400;       /* 短波 */
+    --lw: #f0663a;       /* 长波 */
+    --ok: #2e9b57;
+    --warn: #e07b00;
+    --danger: #c0473f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; flex-direction: column; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 8px 14px; background: var(--navy); color: #fff; flex-shrink: 0;
+  }
+  header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: .5px; white-space: nowrap; }
+  header .task { font-size: .92rem; opacity: .9; flex: 1 1 320px; line-height: 1.35; }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tools button {
+    font: inherit; font-size: .9rem; font-weight: 600; color: var(--navy);
+    background: #fff; border: 0; border-radius: 8px; padding: 7px 11px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    transition: background .15s, transform .1s;
+  }
+  .tools button:hover:not(:disabled) { background: #e3f1fb; }
+  .tools button:active:not(:disabled) { transform: translateY(1px); }
+  .tools button:disabled { opacity: .45; cursor: default; }
+  .tools button.on { background: #ffd666; }
+  .tools .sep { width: 1px; background: rgba(255,255,255,.3); margin: 2px 2px; }
+
+  /* ---------- 主区 ---------- */
+  main { flex: 1; display: flex; min-height: 0; }
+  .stage { flex: 1; min-width: 0; padding: 10px; display: flex; align-items: center; justify-content: center; position: relative; }
+  #scene {
+    width: 100%; height: 100%; display: block; touch-action: none;
+    background: #dcecf8; border-radius: 14px; box-shadow: 0 6px 22px rgba(40, 90, 140, .18);
+  }
+  .tip {
+    position: absolute; left: 22px; bottom: 18px; font-size: .8rem; color: #fff;
+    background: rgba(22, 50, 79, .55); padding: 4px 10px; border-radius: 20px; pointer-events: none;
+  }
+
+  aside {
+    width: 300px; flex-shrink: 0; background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  aside h2 { font-size: 1rem; color: var(--navy); padding: 12px 14px 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  aside h2 small { font-size: .75rem; color: var(--muted); font-weight: 400; }
+  .lib { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px;
+    border: 1.5px solid var(--line); background: #f7fbfe; cursor: grab; touch-action: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .item:hover { border-color: var(--accent); box-shadow: 0 3px 10px rgba(31, 143, 196, .15); }
+  .item svg { flex-shrink: 0; }
+  .item span { font-size: .98rem; font-weight: 600; }
+  .item .count { margin-left: auto; font-size: .75rem; color: var(--muted); font-weight: 400; }
+  .legend { display: flex; gap: 14px; padding: 2px 14px 10px; font-size: .8rem; color: var(--muted); }
+  .legend i { display: inline-block; width: 18px; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+
+  .group { padding: 8px 14px 10px; border-top: 1px solid var(--line); }
+  .group label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .group input {
+    width: 100%; font: inherit; font-size: .95rem; padding: 7px 10px; border-radius: 8px;
+    border: 1.5px solid var(--line); outline: none; -webkit-user-select: text; user-select: text;
+  }
+  .group input:focus { border-color: var(--accent); }
+
+  .feedback { border-top: 1px solid var(--line); flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 10px; }
+  .feedback .empty { font-size: .85rem; color: var(--muted); padding: 2px 14px; line-height: 1.5; }
+  .feedback ul { list-style: none; padding: 0 10px; display: flex; flex-direction: column; gap: 6px; }
+  .feedback li {
+    font-size: .85rem; line-height: 1.45; padding: 7px 9px; border-radius: 8px; cursor: pointer;
+    border-left: 4px solid var(--ok); background: #eff8f2;
+  }
+  .feedback li.bad { border-left-color: var(--warn); background: #fff5e8; }
+  .feedback li.miss { border-left-color: #9aa9b8; background: #f1f4f7; cursor: default; }
+  .feedback li b { color: var(--navy); }
+  .score { margin: 0 12px 8px; padding: 8px 10px; border-radius: 8px; background: #e8f3fb; font-size: .9rem; color: var(--navy); font-weight: 600; }
+
+  /* 拖拽幽灵 */
+  .ghost {
+    position: fixed; left: 0; top: 0; pointer-events: none; z-index: 99;
+    padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,.92);
+    box-shadow: 0 6px 18px rgba(0,0,0,.18); font-weight: 600; font-size: .9rem;
+    display: flex; align-items: center; gap: 8px; transform: translate(-50%, -50%);
+  }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+    background: var(--navy); color: #fff; padding: 8px 16px; border-radius: 20px; font-size: .9rem;
+    opacity: 0; transition: all .25s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* SVG 内样式 */
+  .lbl { font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; fill: var(--ink); }
+  .arrow { cursor: move; }
+  .handle { cursor: pointer; }
+  .ref { pointer-events: none; }
+
+  @media (max-width: 860px) {
+    main { flex-direction: column; }
+    aside { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 42vh; }
+    .lib { flex-direction: row; flex-wrap: wrap; }
+    .item { flex: 1 1 140px; }
+    header .task { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>大气受热过程 · 小组拖拽建模</h1>
+  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，搭建大气受热过程模型。允许出错，完成后再检查。</div>
+  <div class="tools">
+    <button id="bCloud">☁️ 隐藏云层</button>
+    <span class="sep"></span>
+    <button id="bUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
+    <button id="bRedo" title="重做 (Ctrl+Y)">↷ 重做</button>
+    <button id="bDel" title="删除选中 (Delete)">🗑 删除</button>
+    <button id="bClear">🔄 清空</button>
+    <span class="sep"></span>
+    <button id="bCheck">✅ 检查模型</button>
+    <button id="bRef" title="教师用：显示参考模型">👁 参考答案</button>
+    <span class="sep"></span>
+    <button id="bShot">📸 保存图片</button>
+    <button id="bFull">⛶ 全屏</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage">
+    <svg id="scene" viewBox="0 0 1000 625" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <g id="base"></g>
+      <g id="ref" class="ref" style="display:none"></g>
+      <g id="arrows"></g>
+      <g id="ui"></g>
+    </svg>
+    <div class="tip">拖动箭头移动 · 拖动两端圆点改变方向和长短 · 按住 Shift 以 15° 对齐</div>
+  </div>
+
+  <aside>
+    <h2>辐射箭头素材库 <small>拖入或点击添加</small></h2>
+    <div class="legend"><span><i style="background:var(--sw)"></i>太阳短波辐射</span><span><i style="background:var(--lw)"></i>长波辐射</span></div>
+    <div class="lib" id="lib"></div>
+    <div class="group">
+      <label for="groupName">小组名称（会写在保存的图片上）</label>
+      <input id="groupName" placeholder="例如：第 3 组" maxlength="20">
+    </div>
+    <div class="feedback" id="feedback">
+      <h2>模型检查</h2>
+      <p class="empty">搭建完成后点“检查模型”。检查开启后，移动箭头时会实时更新结果。</p>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const W = 1000, H = 625;
+  const EARTH = { x: 500, y: 1100 }, R_GROUND = 650, R_TOP = 890;
+  const SW = '#f5b400', LW = '#f0663a';
+
+  // 可拖拽素材（与原页面一致的 6 种）
+  const LIB = [
+    { key: 'solar',            label: '太阳短波辐射',       color: SW, w: 12, len: 130 },
+    { key: 'atmosAbsorbSolar', label: '大气吸收（太阳辐射）', color: SW, w: 7,  len: 90  },
+    { key: 'surfaceSolar',     label: '到达地面太阳辐射',    color: SW, w: 9,  len: 120 },
+    { key: 'groundLongwave',   label: '地面长波辐射',       color: LW, w: 9,  len: 120 },
+    { key: 'atmosAbsorbGround',label: '大气吸收地面辐射',    color: LW, w: 8,  len: 100 },
+    { key: 'backRadiation',    label: '大气逆辐射',         color: LW, w: 7,  len: 110 },
+  ];
+  const CFG = Object.fromEntries(LIB.map(c => [c.key, c]));
+
+  // 参考模型（教师用）
+  const REF = [
+    { key: 'solar',             x1: 205, y1: 150, x2: 290, y2: 262 },
+    { key: 'atmosAbsorbSolar',  x1: 225, y1: 300, x2: 258, y2: 385 },
+    { key: 'surfaceSolar',      x1: 560, y1: 240, x2: 578, y2: 446 },
+    { key: 'atmosAbsorbGround', x1: 290, y1: 485, x2: 270, y2: 395 },
+    { key: 'backRadiation',     x1: 800, y1: 330, x2: 778, y2: 503 },
+    { key: 'groundLongwave',    x1: 900, y1: 584, x2: 950, y2: 450 },
+  ];
+
+  // 检查规则：r = 到地心距离；inward/outward = 指向地面/背离地面
+  const NEAR_GROUND = r => r < R_GROUND + 55;
+  const IN_ATMOS = r => r > R_GROUND + 25 && r < R_TOP - 8;
+  const ABOVE_TOP = r => r > R_TOP - 30;
+  const RULES = {
+    solar: [
+      [(a) => a.inward, '方向：太阳辐射应从太阳一侧射向地球'],
+      [(a) => ABOVE_TOP(a.r1), '起点：太阳辐射来自大气上界之外'],
+    ],
+    atmosAbsorbSolar: [
+      [(a) => a.inward, '方向：应向下进入大气'],
+      [(a) => IN_ATMOS(a.r2), '终点：被大气吸收的太阳辐射应止于大气中，不到达地面'],
+    ],
+    surfaceSolar: [
+      [(a) => a.inward, '方向：应穿过大气指向地面'],
+      [(a) => NEAR_GROUND(a.r2), '终点：箭头应到达地面'],
+      [(a) => !NEAR_GROUND(a.r1), '起点：应从大气中射来，而不是从地面出发'],
+    ],
+    groundLongwave: [
+      [(a) => NEAR_GROUND(a.r1), '起点：地面辐射从地面出发'],
+      [(a) => a.outward, '方向：地面辐射应由地面向上射出'],
+    ],
+    atmosAbsorbGround: [
+      [(a) => NEAR_GROUND(a.r1), '起点：应从地面出发'],
+      [(a) => a.outward, '方向：应由地面射向大气'],
+      [(a) => IN_ATMOS(a.r2), '终点：应止于大气中（被大气吸收）'],
+    ],
+    backRadiation: [
+      [(a) => !NEAR_GROUND(a.r1) && a.r1 < R_TOP + 20, '起点：大气逆辐射由大气发出'],
+      [(a) => a.inward, '方向：应由大气射向地面（与地面辐射方向相反）'],
+      [(a) => NEAR_GROUND(a.r2), '终点：应到达地面，对地面起保温作用'],
+    ],
+  };
+
+  // ---------- 状态 ----------
+  let arrows = [];
+  let selected = null;
+  let showCloud = true, checking = false, showRef = false;
+  let undoStack = [], redoStack = [];
+  const STORE = 'atmos-heating-model-v1';
+
+  const $ = id => document.getElementById(id);
+  const svg = $('scene'), gBase = $('base'), gRef = $('ref'), gArrows = $('arrows'), gUI = $('ui');
+
+  const el = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const rOf = (x, y) => Math.hypot(x - EARTH.x, y - EARTH.y);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ---------- 底图 ----------
+  function drawBase() {
+    gBase.innerHTML = '';
+    const defs = el('defs', {}, gBase);
+    defs.innerHTML = `
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#0f3d6e"/><stop offset=".32" stop-color="#3f86c4"/>
+        <stop offset=".62" stop-color="#9ccdee"/><stop offset="1" stop-color="#e3f3ff"/>
+      </linearGradient>
+      <radialGradient id="sunGlow"><stop offset="0" stop-color="#fff3a6" stop-opacity=".95"/><stop offset="1" stop-color="#ffe066" stop-opacity="0"/></radialGradient>
+      <radialGradient id="atmos" cx="${EARTH.x}" cy="${EARTH.y}" r="${R_TOP}" gradientUnits="userSpaceOnUse">
+        <stop offset="${R_GROUND / R_TOP}" stop-color="#bfe3ff" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#bfe3ff" stop-opacity=".05"/>
+      </radialGradient>
+      <linearGradient id="land" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#8bc34a"/><stop offset=".25" stop-color="#689f38"/><stop offset="1" stop-color="#4e7a2a"/>
+      </linearGradient>
+      <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
+      <filter id="sel" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#1f8fc4" flood-opacity=".9"/></filter>`;
+    el('rect', { width: W, height: H, fill: 'url(#sky)' }, gBase);
+    // 星点（太空）
+    const stars = el('g', { fill: '#fff', opacity: .7 }, gBase);
+    [[420, 40], [520, 70], [610, 30], [720, 60], [820, 25], [900, 80], [960, 40], [360, 90], [660, 110], [860, 130]]
+      .forEach(([x, y], i) => el('circle', { cx: x, cy: y, r: i % 3 ? 1.2 : 1.8 }, stars));
+    // 大气层
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'url(#atmos)' }, gBase);
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'none', stroke: '#fff', 'stroke-width': 2.5, 'stroke-dasharray': '14 10', opacity: .9 }, gBase);
+    label(gBase, '大气上界', 900, 282, 24, '#fff', 'none');
+    label(gBase, '大 气 层', 680, 420, 18, '#2c5d86', 'none').setAttribute('opacity', '.55');
+    // 太阳
+    const sun = el('g', {}, gBase);
+    el('circle', { cx: 120, cy: 90, r: 95, fill: 'url(#sunGlow)' }, sun);
+    for (let i = 0; i < 12; i++) {
+      const t = i * Math.PI / 6;
+      el('line', { x1: 120 + Math.cos(t) * 54, y1: 90 + Math.sin(t) * 54, x2: 120 + Math.cos(t) * 72, y2: 90 + Math.sin(t) * 72,
+        stroke: '#ffd23f', 'stroke-width': 4, 'stroke-linecap': 'round' }, sun);
+    }
+    el('circle', { cx: 120, cy: 90, r: 44, fill: '#ffcf1f', stroke: '#ffe680', 'stroke-width': 3 }, sun);
+    label(gBase, '太阳', 120, 98, 20, '#7a4b00', 'none');
+    // 云
+    if (showCloud) { cloud(320, 300, 1.2); cloud(680, 262, 1.0); }
+    // 地面
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND + 8, fill: '#3a8fd0', opacity: .5 }, gBase);
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND, fill: 'url(#land)' }, gBase);
+    label(gBase, '地 面', 500, 560, 26, '#fff', 'none').setAttribute('opacity', '.9');
+    // 固定辐射（底图自带）
+    scatter(110, 420);
+    fixed(110, 580, -Math.PI * .65, 80, 4, SW, '地面反射');
+    fixed(480, 452, -Math.PI / 2, 292, 4, LW, '射向宇宙的地面辐射', 'left');
+    fixed(360, 280, -Math.PI / 2.8, 100, 8, SW, '云层反射（太阳辐射）', 'end');
+    fixed(680, 228, -Math.PI / 2, 150, 7, LW, '射向宇宙的大气辐射', 'side');
+  }
+
+  function label(parent, text, x, y, size, fill = '#1e2b3a', stroke = '#fff', anchor = 'middle') {
+    const t = el('text', { x, y, 'font-size': size, 'text-anchor': anchor, class: 'lbl' }, parent);
+    t.style.fill = fill;
+    if (stroke === 'none') t.style.stroke = 'none';
+    t.textContent = text;
+    return t;
+  }
+
+  function cloud(x, y, s) {
+    const g = el('g', { transform: `translate(${x} ${y}) scale(${s})`, fill: '#fff' }, gBase);
+    el('g', { filter: 'url(#soft)', opacity: .7 }, g).innerHTML =
+      '<ellipse cx="15" cy="12" rx="80" ry="30"/>';
+    [[-30, 10, 25], [0, -10, 35], [35, 0, 28], [60, 10, 22], [15, 15, 30]].forEach(([cx, cy, r]) => el('circle', { cx, cy, r }, g));
+  }
+
+  function scatter(x, y) {
+    const g = el('g', {}, gBase);
+    for (let i = 0; i < 8; i++) {
+      const t = i * Math.PI / 4;
+      drawArrowShape(g, x + Math.cos(t) * 10, y + Math.sin(t) * 10, x + Math.cos(t) * 46, y + Math.sin(t) * 46, 4, SW, 9);
+    }
+    el('circle', { cx: x, cy: y, r: 5, fill: '#7a6450' }, g);
+    label(g, '大气散射', x, y - 56, 19);
+  }
+
+  function fixed(x, y, ang, len, w, color, text, mode) {
+    const x2 = x + Math.cos(ang) * len, y2 = y + Math.sin(ang) * len;
+    const g = el('g', {}, gBase);
+    drawArrowShape(g, x, y, x2, y2, w, color);
+    if (mode === 'end') label(g, text, x2 + 10, y2 + 4, 18, '#1e2b3a', '#fff', 'start');
+    else if (mode === 'left') label(g, text, (x + x2) / 2 - 12, (y + y2) / 2 + 6, 18, '#1e2b3a', '#fff', 'end');
+    else if (mode === 'side') label(g, text, (x + x2) / 2 + 14, (y + y2) / 2, 18, '#1e2b3a', '#fff', 'start');
+    else label(g, text, (x + x2) / 2, (y + y2) / 2 - 14, 18);
+  }
+
+  // 画一支箭头（杆 + 头），返回 {dx,dy,len}
+  function drawArrowShape(parent, x1, y1, x2, y2, w, color, headOverride) {
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const head = Math.min(headOverride || Math.max(12, w * 2.1), len * .6);
+    const bx = x2 - ux * head, by = y2 - uy * head, hw = Math.max(head * .62, w * 1.1);
+    el('line', { x1, y1, x2: bx + ux * 1, y2: by + uy * 1, stroke: color, 'stroke-width': w, 'stroke-linecap': 'round' }, parent);
+    el('polygon', { points: `${x2},${y2} ${bx - uy * hw},${by + ux * hw} ${bx + uy * hw},${by - ux * hw}`, fill: color }, parent);
+    return { ux, uy, len };
+  }
+
+  function labelSide(a) {
+    const dx = a.x2 - a.x1, dy = a.y2 - a.y1;
+    const vertical = Math.abs(dy) > Math.abs(dx) * 1.2;
+    const side = (a.x1 + a.x2) / 2 > 860 ? -1 : 1;   // 靠右边缘时标签放左侧
+    return { vertical, side };
+  }
+
+  // 标签放置：横向箭头放上方，竖向箭头放右侧
+  function placeLabel(parent, a, text, size) {
+    const dx = a.x2 - a.x1, dy = a.y2 - a.y1, len = Math.hypot(dx, dy) || 1;
+    const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
+    const { vertical, side } = labelSide(a);
+    if (vertical) {
+      return label(parent, text, mx + side * (CFG[a.key].w + 10), my + 6, size, '#1e2b3a', '#fff', side > 0 ? 'start' : 'end');
+    }
+    return label(parent, text, mx, my - CFG[a.key].w - 10, size);
+  }
+
+  // ---------- 箭头层 ----------
+  function analyse(a) {
+    const r1 = rOf(a.x1, a.y1), r2 = rOf(a.x2, a.y2);
+    const mx = (a.x1 + a.x2) / 2 - EARTH.x, my = (a.y1 + a.y2) / 2 - EARTH.y, m = Math.hypot(mx, my);
+    const dx = a.x2 - a.x1, dy = a.y2 - a.y1, len = Math.hypot(dx, dy) || 1;
+    const radial = (dx * mx + dy * my) / (len * m);   // >0 背离地心
+    const info = { r1, r2, inward: radial < -0.45, outward: radial > 0.45 };
+    const problems = RULES[a.key].filter(([ok]) => !ok(info)).map(([, msg]) => msg);
+    return problems;
+  }
+
+  function renderArrows() {
+    gArrows.innerHTML = '';
+    gUI.innerHTML = '';
+    arrows.forEach((a, i) => {
+      const c = CFG[a.key];
+      const g = el('g', { class: 'arrow', 'data-id': a.id }, gArrows);
+      if (a.id === selected) g.setAttribute('filter', 'url(#sel)');
+      el('line', { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, stroke: 'transparent', 'stroke-width': Math.max(34, c.w + 26), 'stroke-linecap': 'round', 'data-part': 'body' }, g);
+      const shape = el('g', { 'pointer-events': 'none' }, g);
+      drawArrowShape(shape, a.x1, a.y1, a.x2, a.y2, c.w, c.color);
+      const t = placeLabel(g, a, c.label, 19);
+      t.setAttribute('data-part', 'body');
+
+      if (checking) {
+        const probs = analyse(a);
+        const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
+        const { vertical, side } = labelSide(a);   // 徽标放在标签的另一侧
+        const bx = vertical ? mx - side * (c.w + 20) : mx, by = vertical ? my : my + c.w + 20;
+        const b = el('g', { 'pointer-events': 'none' }, gUI);
+        el('circle', { cx: bx, cy: by, r: 12, fill: probs.length ? '#e07b00' : '#2e9b57', stroke: '#fff', 'stroke-width': 2.5 }, b);
+        const tx = el('text', { x: bx, y: by + 5, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: '#fff' }, b);
+        tx.textContent = probs.length ? i + 1 : '✓';
+      }
+    });
+    const s = arrows.find(a => a.id === selected);
+    if (s) {
+      [['tail', s.x1, s.y1, '#ffffff', '#1f8fc4'], ['head', s.x2, s.y2, '#1f8fc4', '#ffffff']].forEach(([part, x, y, f, st]) => {
+        el('circle', { cx: x, cy: y, r: 22, fill: 'transparent', class: 'handle', 'data-id': s.id, 'data-part': part }, gUI);
+        el('circle', { cx: x, cy: y, r: 9, fill: f, stroke: st, 'stroke-width': 3, 'pointer-events': 'none' }, gUI);
+      });
+    }
+    $('bDel').disabled = !s;
+    $('bUndo').disabled = !undoStack.length;
+    $('bRedo').disabled = !redoStack.length;
+    updateCounts();
+    if (checking) renderFeedback();
+    save();
+  }
+
+  function renderRef() {
+    gRef.innerHTML = '';
+    REF.forEach(r => {
+      const c = CFG[r.key];
+      const g = el('g', { opacity: .55 }, gRef);
+      drawArrowShape(g, r.x1, r.y1, r.x2, r.y2, c.w, c.color);
+      const t = placeLabel(g, { ...r }, c.label, 17);
+      t.style.fill = '#16324f';
+    });
+  }
+
+  // ---------- 检查反馈 ----------
+  function renderFeedback() {
+    const box = $('feedback');
+    if (!checking) {
+      box.innerHTML = '<h2>模型检查</h2><p class="empty">搭建完成后点“检查模型”。检查开启后，移动箭头时会实时更新结果。</p>';
+      return;
+    }
+    const items = arrows.map((a, i) => ({ a, i, probs: analyse(a) }));
+    const okCount = items.filter(x => !x.probs.length).length;
+    const missing = LIB.filter(c => !arrows.some(a => a.key === c.key));
+    let html = `<h2>模型检查 <small>实时</small></h2>`;
+    html += `<div class="score">已放置 ${arrows.length} 支，合理 ${okCount} 支 · 覆盖 ${LIB.length - missing.length}/${LIB.length} 种辐射</div><ul>`;
+    items.forEach(({ a, i, probs }) => {
+      const name = CFG[a.key].label;
+      html += probs.length
+        ? `<li class="bad" data-id="${a.id}"><b>${i + 1}. ${name}</b><br>${probs.join('<br>')}</li>`
+        : `<li data-id="${a.id}"><b>✓ ${name}</b>　位置与方向合理</li>`;
+    });
+    missing.forEach(c => { html += `<li class="miss"><b>还缺少：${c.label}</b></li>`; });
+    if (!arrows.length) html += '<li class="miss">画布上还没有箭头</li>';
+    html += '</ul>';
+    box.innerHTML = html;
+  }
+  $('feedback').addEventListener('click', e => {
+    const li = e.target.closest('li[data-id]');
+    if (li) { selected = Number(li.dataset.id); renderArrows(); }
+  });
+
+  // ---------- 历史 ----------
+  const snap = () => JSON.stringify(arrows);
+  function commit(before) {
+    if (before === snap()) return;
+    undoStack.push(before);
+    if (undoStack.length > 100) undoStack.shift();
+    redoStack = [];
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snap());
+    arrows = JSON.parse(undoStack.pop());
+    if (!arrows.some(a => a.id === selected)) selected = null;
+    renderArrows();
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snap());
+    arrows = JSON.parse(redoStack.pop());
+    renderArrows();
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ arrows, group: $('groupName').value, showCloud })); } catch (e) {}
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (d && Array.isArray(d.arrows)) {
+        arrows = d.arrows.filter(a => CFG[a.key]);
+        $('groupName').value = d.group || '';
+        showCloud = d.showCloud !== false;
+      }
+    } catch (e) {}
+  }
+
+  // ---------- 坐标 ----------
+  function toSvg(cx, cy) {
+    const p = svg.createSVGPoint(); p.x = cx; p.y = cy;
+    const q = p.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: q.x, y: q.y };
+  }
+  function overScene(cx, cy) {
+    const r = svg.getBoundingClientRect();
+    return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+  }
+
+  let nextId = Date.now();
+  function addArrow(key, x, y) {
+    const before = snap();
+    const c = CFG[key];
+    x = clamp(x, c.len / 2 + 10, W - c.len / 2 - 10);
+    y = clamp(y, 20, H - 20);
+    const a = { id: nextId++, key, x1: x - c.len / 2, y1: y, x2: x + c.len / 2, y2: y };
+    arrows.push(a);
+    selected = a.id;
+    commit(before);
+    renderArrows();
+  }
+
+  // ---------- 画布交互（Pointer Events，鼠标/触屏/笔通用） ----------
+  let drag = null;
+  svg.addEventListener('pointerdown', e => {
+    const t = e.target.closest('[data-part]');
+    if (!t) { if (selected !== null) { selected = null; renderArrows(); } return; }
+    const id = Number(t.getAttribute('data-id') || t.closest('[data-id]').getAttribute('data-id'));
+    const a = arrows.find(x => x.id === id);
+    if (!a) return;
+    e.preventDefault();
+    selected = id;
+    const p = toSvg(e.clientX, e.clientY);
+    drag = { id, part: t.getAttribute('data-part'), start: p, orig: { ...a }, before: snap() };
+    // 选中的箭头置顶
+    arrows = arrows.filter(x => x.id !== id).concat(a);
+    svg.setPointerCapture(e.pointerId);
+    renderArrows();
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const a = arrows.find(x => x.id === drag.id);
+    const p = toSvg(e.clientX, e.clientY);
+    const o = drag.orig;
+    if (drag.part === 'body') {
+      let dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+      dx = clamp(dx, -Math.min(o.x1, o.x2), W - Math.max(o.x1, o.x2));
+      dy = clamp(dy, -Math.min(o.y1, o.y2), H - Math.max(o.y1, o.y2));
+      Object.assign(a, { x1: o.x1 + dx, y1: o.y1 + dy, x2: o.x2 + dx, y2: o.y2 + dy });
+    } else {
+      const fx = drag.part === 'head' ? o.x1 : o.x2, fy = drag.part === 'head' ? o.y1 : o.y2;
+      let x = clamp(p.x, 0, W), y = clamp(p.y, 0, H);
+      let ang = Math.atan2(y - fy, x - fx), len = Math.max(40, Math.hypot(x - fx, y - fy));
+      if (e.shiftKey) ang = Math.round(ang / (Math.PI / 12)) * (Math.PI / 12);
+      x = fx + Math.cos(ang) * len; y = fy + Math.sin(ang) * len;
+      if (drag.part === 'head') { a.x2 = x; a.y2 = y; } else { a.x1 = x; a.y1 = y; }
+    }
+    renderArrows();
+  });
+  const endDrag = () => { if (drag) { commit(drag.before); drag = null; renderArrows(); } };
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  // ---------- 素材库（Pointer 拖拽，触屏可用；点击直接添加） ----------
+  function buildLib() {
+    const lib = $('lib');
+    LIB.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = `<svg width="64" height="26" viewBox="0 0 64 26"></svg><span>${c.label}</span><em class="count" data-count="${c.key}"></em>`;
+      drawArrowShape(item.querySelector('svg'), 4, 13, 60, 13, Math.max(4, c.w * .7), c.color);
+      item.addEventListener('pointerdown', e => startLibDrag(e, c, item));
+      lib.appendChild(item);
+    });
+  }
+  function updateCounts() {
+    document.querySelectorAll('[data-count]').forEach(e => {
+      const n = arrows.filter(a => a.key === e.dataset.count).length;
+      e.textContent = n ? `×${n}` : '';
+    });
+  }
+  function startLibDrag(e, c, item) {
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    let ghost = null;
+    item.setPointerCapture(e.pointerId);
+    const move = ev => {
+      if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 6) {
+        ghost = document.createElement('div');
+        ghost.className = 'ghost';
+        ghost.innerHTML = item.innerHTML;
+        document.body.appendChild(ghost);
+      }
+      if (ghost) ghost.style.left = ev.clientX + 'px', ghost.style.top = ev.clientY + 'px';
+    };
+    const up = ev => {
+      item.removeEventListener('pointermove', move);
+      item.removeEventListener('pointerup', up);
+      item.removeEventListener('pointercancel', up);
+      if (ghost) {
+        ghost.remove();
+        if (overScene(ev.clientX, ev.clientY)) {
+          const p = toSvg(ev.clientX, ev.clientY);
+          addArrow(c.key, p.x, p.y);
+        }
+      } else if (ev.type === 'pointerup') {
+        // 点击：放在画面中部，逐个错开
+        const n = arrows.length % 6;
+        addArrow(c.key, 250 + (n % 3) * 250, 320 + Math.floor(n / 3) * 90);
+        toast('已添加到画面中部，拖动到合适位置');
+      }
+    };
+    item.addEventListener('pointermove', move);
+    item.addEventListener('pointerup', up);
+    item.addEventListener('pointercancel', up);
+  }
+
+  // ---------- 按钮 ----------
+  $('bCloud').onclick = () => {
+    showCloud = !showCloud;
+    $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
+    drawBase(); save();
+  };
+  $('bUndo').onclick = undo;
+  $('bRedo').onclick = redo;
+  $('bDel').onclick = () => {
+    if (selected === null) return;
+    const before = snap();
+    arrows = arrows.filter(a => a.id !== selected);
+    selected = null;
+    commit(before); renderArrows();
+  };
+  $('bClear').onclick = () => {
+    if (!arrows.length) return;
+    if (!confirm('确定清空画布上的所有箭头吗？（可以用“撤销”恢复）')) return;
+    const before = snap();
+    arrows = []; selected = null;
+    commit(before); renderArrows();
+  };
+  $('bCheck').onclick = () => {
+    checking = !checking;
+    $('bCheck').classList.toggle('on', checking);
+    $('bCheck').textContent = checking ? '✅ 关闭检查' : '✅ 检查模型';
+    renderArrows(); renderFeedback();
+  };
+  $('bRef').onclick = () => {
+    showRef = !showRef;
+    $('bRef').classList.toggle('on', showRef);
+    gRef.style.display = showRef ? '' : 'none';
+  };
+  $('bFull').onclick = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  };
+  $('groupName').addEventListener('input', save);
+
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) { e.preventDefault(); $('bDel').onclick(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+    else if (e.key === 'Escape') { selected = null; renderArrows(); }
+  });
+
+  // ---------- 保存图片（2 倍清晰度，带小组名与时间） ----------
+  $('bShot').onclick = () => {
+    const clone = svg.cloneNode(true);
+    clone.querySelector('#ui').innerHTML = '';
+    clone.querySelectorAll('[filter="url(#sel)"]').forEach(n => n.removeAttribute('filter'));
+    if (!showRef) clone.querySelector('#ref').remove();
+    clone.setAttribute('width', W); clone.setAttribute('height', H);
+    const style = document.createElementNS(NS, 'style');
+    style.textContent = `text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
+      .lbl{font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round}`;
+    clone.insertBefore(style, clone.firstChild);
+    const data = new XMLSerializer().serializeToString(clone);
+    const img = new Image();
+    img.onload = () => {
+      const S = 2, top = 64;
+      const cv = document.createElement('canvas');
+      cv.width = W * S; cv.height = (H + top) * S;
+      const cx = cv.getContext('2d');
+      cx.scale(S, S);
+      cx.fillStyle = '#16324f'; cx.fillRect(0, 0, W, top);
+      cx.fillStyle = '#fff'; cx.font = 'bold 24px "Microsoft YaHei", sans-serif'; cx.textBaseline = 'middle';
+      cx.fillText('大气受热过程模型', 20, top / 2);
+      cx.font = '18px "Microsoft YaHei", sans-serif'; cx.textAlign = 'right';
+      const g = $('groupName').value.trim();
+      const now = new Date();
+      const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      cx.fillText((g ? g + '　' : '') + ts, W - 20, top / 2);
+      cx.drawImage(img, 0, top, W, H);
+      const a = document.createElement('a');
+      a.download = `大气受热过程_${g || '模型'}_${ts.replace(/[: ]/g, '-')}.png`;
+      a.href = cv.toDataURL('image/png');
+      a.click();
+      toast('图片已保存');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data);
+  };
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  // ---------- 启动 ----------
+  load();
+  $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
+  drawBase();
+  renderRef();
+  buildLib();
+  renderArrows();
+})();
+</script>
+</body>
+</html>
