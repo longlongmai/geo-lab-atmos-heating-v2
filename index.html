@@ -126,9 +126,6 @@
   .modal .row button { font: inherit; font-size: .95rem; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; background: #e3f1fb; color: var(--navy); }
   .modal .row button.primary { background: var(--accent); color: #fff; }
   .modal .row button:disabled { opacity: .5; cursor: default; }
-  .classbar { font-size: .85rem; background: #ffd666; color: var(--navy); border-radius: 20px; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
-  .classbar[hidden] { display: none; }
-  .classbar.bad { background: #ffd1cc; }
 
   @media (max-width: 860px) {
     main { flex-direction: column; }
@@ -143,7 +140,6 @@
 
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
-  <span class="classbar" id="classBar" hidden></span>
   <div class="task" id="toolTask">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“提交给老师”。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
@@ -188,10 +184,6 @@
   <div class="box">
     <h3>📤 提交给老师</h3>
     <p>提交后，作品会出现在老师的作品墙上，全班都能看到。可以修改后再次提交，以最后一次为准。</p>
-    <div id="sCodeRow" hidden>
-      <label for="sCode">课堂码（老师作品墙上显示的 4 位数字）</label>
-      <input id="sCode" maxlength="4" inputmode="numeric" placeholder="例如：5832">
-    </div>
     <label for="sName">小组名称</label>
     <input id="sName" maxlength="20" placeholder="例如：第 3 组">
     <label for="sNote">我们的说明（选填）：模型想表达什么？哪支箭头最关键？</label>
@@ -480,42 +472,25 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
-  // ---------- 提交给老师：作品发到课堂码对应的频道，老师作品墙实时收到 ----------
-  // 课堂码来自老师作品墙上的二维码（?k=1234）；直接打开页面时由学生手动填写
-  const CODE_KEY = 'atmos-heating-class-code';
-  let classCode = GeoScene.readCode();
-  if (!classCode) try { const c = localStorage.getItem(CODE_KEY); if (GeoScene.validCode(c)) classCode = c; } catch (e) {}
-  function setCode(c) {
-    classCode = c;
-    try { localStorage.setItem(CODE_KEY, c); } catch (e) {}
-    $('classBar').hidden = false;
-    $('classBar').textContent = '课堂码 ' + c;
-  }
-  if (classCode) setCode(classCode);
-
+  // ---------- 提交给老师：作品经中转服务实时出现在老师的作品墙上 ----------
   let lastNote = '';
   $('bPin').onclick = () => {
     if (!arrows.length) { toast('画布上还没有箭头'); return; }
-    $('sCodeRow').hidden = !!classCode && !!GeoScene.readCode();
-    $('sCode').value = classCode || '';
     $('sName').value = $('groupName').value.trim();
     $('sNote').value = lastNote;
     $('sGo').disabled = false; $('sGo').textContent = '提交';
     $('submit').hidden = false;
-    (!classCode ? $('sCode') : $('sName').value ? $('sNote') : $('sName')).focus();
+    ($('sName').value ? $('sNote') : $('sName')).focus();
   };
   $('sCancel').onclick = () => { $('submit').hidden = true; };
   $('sGo').onclick = async () => {
-    const code = $('sCode').value.trim();
-    if (!GeoScene.validCode(code)) { toast('请填写老师作品墙上的 4 位课堂码'); $('sCodeRow').hidden = false; $('sCode').focus(); return; }
     const name = $('sName').value.trim();
     if (!name) { toast('请填写小组名称'); $('sName').focus(); return; }
-    setCode(code);
     $('groupName').value = name; save();
     lastNote = $('sNote').value.trim();
     $('sGo').disabled = true; $('sGo').textContent = '提交中…';
     try {
-      await GeoScene.submitWork(code, { name, note: lastNote, arrows, showCloud });
+      await GeoScene.submitWork({ name, note: lastNote, arrows, showCloud });
       $('submit').hidden = true;
       toast('提交成功！老师的作品墙上已经能看到了');
     } catch (e) {
@@ -523,15 +498,7 @@
       toast(e.message);
     }
   };
-  $('bWall').onclick = () => {
-    let c = classCode;
-    if (!c) {
-      c = (prompt('请输入课堂码（老师作品墙上显示的 4 位数字）', '') || '').trim();
-      if (!GeoScene.validCode(c)) { if (c) toast('课堂码是 4 位数字'); return; }
-      setCode(c);
-    }
-    window.open(`wall.html?k=${c}&view=1`, 'geo-lab-wall');
-  };
+  $('bWall').onclick = () => window.open('wall.html?view=1' + GeoScene.testQuery, 'geo-lab-wall');
 
   // ---------- 启动 ----------
   load();

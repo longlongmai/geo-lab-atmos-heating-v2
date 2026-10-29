@@ -209,27 +209,23 @@
   }
 
   // ---------- 课堂：学生提交 → 中转服务 → 老师作品墙 ----------
-  // 用免注册的 ntfy.sh 消息中转：学生页把作品发到“课堂码”对应的频道，作品墙实时接收。
-  // 不需要账号和令牌；消息在中转服务上保留 12 小时，作品墙另在本机浏览器里留存一份。
+  // 用免注册的 ntfy.sh 消息中转：所有提交发到同一个固定频道，作品墙实时接收。
+  // 老师点“新开一节课”时发一条“开课”消息，作品墙只显示最近一次开课之后的提交。
+  // 不需要账号、令牌或课堂码；消息在中转服务上保留 12 小时，老师作品墙另在本机留存一份。
   const RELAY = 'https://ntfy.sh/';
-  const CHANNEL = 'geolab-atmos-q7m2x9-';
+  // ?ch=xxx 只用于测试：走单独的频道，不会出现在真实课堂的作品墙上
+  const TEST_CH = (location.search.match(/[?&]ch=([a-z0-9-]{4,30})\b/) || [])[1] || '';
+  const CHANNEL = RELAY + 'geolab-atmos-q7m2x9-' + (TEST_CH || 'main');
   const APP = 'atmos-heating';
   const KEYS = LIB.map(c => c.key);
 
-  const newCode = () => String(Math.floor(1000 + Math.random() * 9000));
-  const validCode = c => /^\d{4}$/.test(String(c || '').trim());
-  function readCode() {
-    const m = (location.search + location.hash).match(/[?#&]k=(\d{4})\b/);
-    return m ? m[1] : null;
-  }
-
   // 只发 ASCII（中文转成 \uXXXX），避免中转服务把非 ASCII 正文当成附件
-  const asciiJson = o => JSON.stringify(o).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+  const asciiJson = o => JSON.stringify(o).replace(/[^\x00-\x7e]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
 
-  async function send(code, obj) {
+  async function send(obj) {
     let r;
     try {
-      r = await fetch(RELAY + CHANNEL + code, { method: 'POST', body: asciiJson({ app: APP, ...obj }) });
+      r = await fetch(CHANNEL, { method: 'POST', body: asciiJson({ app: APP, ...obj }) });
     } catch (e) {
       throw new Error('网络连接失败，请检查网络后重试');
     }
@@ -237,13 +233,12 @@
     if (!r.ok) throw new Error('提交失败（' + r.status + '），请稍后重试');
   }
 
-  function submitWork(code, w) {
+  function submitWork(w) {
     const a = w.arrows.map(x => [KEYS.indexOf(x.key), Math.round(x.x1), Math.round(x.y1), Math.round(x.x2), Math.round(x.y2), x.w || 0]);
-    return send(code, { type: 'work', name: w.name, note: (w.note || '').slice(0, 300), cloud: w.showCloud === false ? 0 : 1, a });
+    return send({ type: 'work', name: w.name, note: (w.note || '').slice(0, 300), cloud: w.showCloud === false ? 0 : 1, a });
   }
-  function submitScore(code, name, scores, total, remark) {
-    return send(code, { type: 'score', name, scores, total, remark: remark || '' });
-  }
+  const submitScore = (name, scores, total, remark) => send({ type: 'score', name, scores, total, remark: remark || '' });
+  const startLesson = () => send({ type: 'lesson' });
 
   function workFromWire(o, time) {
     const arrows = (o.a || []).filter(x => Array.isArray(x) && KEYS[x[0]]).map((x, i) => {
@@ -254,54 +249,96 @@
     return { name: String(o.name || '未命名').slice(0, 20), note: String(o.note || '').slice(0, 300), arrows, showCloud: o.cloud !== 0, time };
   }
 
-  // 一节课的状态：每组最后一次提交、最后一次评分。事件按 id 去重，可重复喂入
+  // 课堂状态：收下全部消息（按 id 去重），按“最近一次开课”之后的消息算出每组最新提交和评分
   function createClassState() {
-    const seen = new Set();
-    const events = [];
-    const works = new Map(), scores = new Map();
+    const ids = new Set();
+    let events = [];
+    let state = null;
     function add(ev) {
-      if (!ev || seen.has(ev.id)) return false;
-      const o = ev.data;
-      if (!o || o.app !== APP || typeof o.name !== 'string' || !o.name.trim()) return false;
-      seen.add(ev.id);
+      const o = ev && ev.data;
+      if (!o || o.app !== APP || ids.has(ev.id)) return false;
+      if (o.type !== 'lesson' && (typeof o.name !== 'string' || !o.name.trim())) return false;
+      ids.add(ev.id);
       events.push(ev);
-      if (o.type === 'work') {
-        const prev = works.get(o.name);
-        if (prev && prev.time > ev.time) return true;
-        const w = workFromWire(o, ev.time);
-        w.versions = (prev ? prev.versions : 0) + 1;
-        works.set(w.name, w);
-      } else if (o.type === 'score') {
-        const prev = scores.get(o.name);
-        if (!prev || prev.time <= ev.time) scores.set(o.name, { scores: o.scores || {}, total: +o.total || 0, remark: String(o.remark || ''), time: ev.time });
-      }
+      state = null;
       return true;
     }
-    return { add, works, scores, events };
+    function compute() {
+      if (state) return state;
+      events.sort((a, b) => a.time - b.time);
+      const lessons = events.filter(e => e.data.type === 'lesson');
+      const start = lessons.length ? lessons[lessons.length - 1].time : 0;
+      // 只留本节课的消息，本机留存不会越积越多
+      events = events.filter(e => e.time >= start);
+      const works = new Map(), scores = new Map();
+      for (const ev of events) {
+        const o = ev.data;
+        if (o.type === 'work') {
+          const prev = works.get(o.name);
+          const w = workFromWire(o, ev.time);
+          w.versions = (prev ? prev.versions : 0) + 1;
+          works.set(w.name, w);
+        } else if (o.type === 'score') {
+          scores.set(o.name, { scores: o.scores || {}, total: +o.total || 0, remark: String(o.remark || ''), time: ev.time });
+        }
+      }
+      return (state = { start, hasLesson: lessons.length > 0, works, scores });
+    }
+    return {
+      add,
+      get works() { return compute().works; },
+      get scores() { return compute().scores; },
+      get start() { return compute().start; },
+      get hasLesson() { return compute().hasLesson; },
+      get events() { compute(); return events; },
+    };
   }
 
-  // 实时接收：一条长连接（SSE），断线后从最后一条消息接着收
-  function subscribe(code, onEvent, onStatus) {
-    let es = null, lastId = 'all', closed = false, retry = null;
-    function open() {
-      es = new EventSource(`${RELAY}${CHANNEL}${code}/sse?since=${lastId}`);
+  // 接收：先一次取回中转服务上已有的消息（onReady），再用长连接（SSE）实时接收新消息，断线自动重连
+  function subscribe(onEvent, onReady, onStatus) {
+    let es = null, since = 'all', closed = false, retry = null;
+    const toEvent = msg => {
+      let data = null;
+      try { data = JSON.parse(msg.message); } catch (e) {}
+      return { id: msg.id, time: msg.time * 1000, data };
+    };
+    function live() {
+      if (closed) return;
+      es = new EventSource(`${CHANNEL}/sse?since=${since}`);
       es.onopen = () => onStatus(true);
       es.onmessage = m => {
         let msg;
         try { msg = JSON.parse(m.data); } catch (e) { return; }
         if (msg.event !== 'message') return;
-        lastId = msg.id;
-        let data = null;
-        try { data = JSON.parse(msg.message); } catch (e) {}
-        onEvent({ id: msg.id, time: msg.time * 1000, data });
+        since = msg.id;
+        onEvent(toEvent(msg));
       };
       es.onerror = () => {
         onStatus(false);
         es.close();
-        if (!closed) { clearTimeout(retry); retry = setTimeout(open, 3000); }
+        clearTimeout(retry); retry = setTimeout(live, 3000);
       };
     }
-    open();
+    (async function backlog() {
+      try {
+        const t = Math.floor(Date.now() / 1000) - 5;
+        const r = await fetch(`${CHANNEL}/json?poll=1&since=all`, { cache: 'no-store' });
+        if (!r.ok) throw new Error(r.status);
+        const lines = (await r.text()).split('\n').filter(Boolean);
+        lines.forEach(l => {
+          let msg;
+          try { msg = JSON.parse(l); } catch (e) { return; }
+          if (msg.event === 'message') { since = msg.id; onEvent(toEvent(msg)); }
+        });
+        if (!lines.length) since = String(t);
+        onStatus(true);
+        onReady();
+        live();
+      } catch (e) {
+        onStatus(false);
+        if (!closed) retry = setTimeout(backlog, 3000);
+      }
+    })();
     return () => { closed = true; clearTimeout(retry); es && es.close(); };
   }
 
@@ -314,6 +351,7 @@
   window.GeoScene = {
     NS, W, H, LIB, CFG, W_MIN, W_MAX, SW, LW,
     el, clamp, aw, drawBase, drawArrowShape, labelSide, placeLabel, buildStaticSvg, exportPng, fmtTime,
-    newCode, validCode, readCode, submitWork, submitScore, createClassState, subscribe, DEFAULT_RUBRIC,
+    submitWork, submitScore, startLesson, createClassState, subscribe, DEFAULT_RUBRIC,
+    testQuery: TEST_CH ? '&ch=' + TEST_CH : '',
   };
 })();
