@@ -109,52 +109,6 @@
   .handle { cursor: pointer; }
   .handle.wh { cursor: ew-resize; }
 
-  /* ---------- 作品墙 ---------- */
-  .wall {
-    position: fixed; inset: 0; z-index: 50; background: var(--bg);
-    display: flex; flex-direction: column;
-  }
-  .wall[hidden] { display: none; }
-  .wall-head {
-    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-    padding: 8px 14px; background: var(--navy); color: #fff; flex-shrink: 0;
-  }
-  .wall-head h2 { font-size: 1.15rem; }
-  .wall-head small { font-size: .85rem; opacity: .85; }
-  .wall-head .tools { margin-left: auto; }
-  .wall-grid {
-    flex: 1; overflow: auto; padding: 16px;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; align-content: start;
-  }
-  .wall-grid:empty { display: none; }
-  .wall-empty { display: none; margin: auto; text-align: center; color: var(--muted); font-size: 1.15rem; line-height: 1.9; }
-  .wall-grid:empty + .wall-empty { display: block; }
-  .card {
-    background: #fff; border-radius: 14px; overflow: hidden; cursor: pointer;
-    box-shadow: 0 6px 22px rgba(40, 90, 140, .14); border: 3px solid transparent;
-    transition: transform .12s, border-color .12s;
-  }
-  .card:hover { transform: translateY(-2px); border-color: var(--accent); }
-  .card svg { width: 100%; display: block; background: #dcecf8; }
-  .card .cap { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; }
-  .card .cap b { font-size: 1.05rem; color: var(--navy); }
-  .card .cap span { font-size: .85rem; color: var(--muted); }
-  .card .cap small { font-size: .8rem; color: var(--muted); margin-left: auto; }
-
-  /* 单组放大查看 */
-  .view { position: fixed; inset: 0; z-index: 60; background: rgba(10, 25, 40, .94); display: flex; flex-direction: column; }
-  .view[hidden] { display: none; }
-  .view .wall-head { background: transparent; }
-  .view .big { flex: 1; min-height: 0; padding: 4px 76px 18px; }
-  .view .big svg { width: 100%; height: 100%; display: block; }
-  .view .nav {
-    position: absolute; top: 50%; transform: translateY(-50%); width: 58px; height: 58px; border-radius: 50%;
-    border: 0; background: rgba(255,255,255,.92); color: var(--navy); font-size: 1.9rem; line-height: 1; cursor: pointer;
-  }
-  .view .nav:disabled { opacity: .25; cursor: default; }
-  .view .nav.prev { left: 10px; }
-  .view .nav.next { right: 10px; }
-
   /* 课堂模式：提交弹层 */
   .modal { position: fixed; inset: 0; z-index: 70; background: rgba(10, 25, 40, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
   .modal[hidden] { display: none; }
@@ -190,7 +144,7 @@
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
   <span class="classbar" id="classBar" hidden></span>
-  <div class="task" id="toolTask">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“存入作品墙”。允许出错。</div>
+  <div class="task" id="toolTask">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“提交给老师”。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
     <span class="sep"></span>
@@ -200,8 +154,8 @@
     <button id="bClear">🔄 清空</button>
     <span class="sep"></span>
     <button id="bShot">📸 保存图片</button>
-    <button id="bPin" class="on">📌 存入作品墙</button>
-    <button id="bWall">🖼 作品墙</button>
+    <button id="bPin" class="on">📤 提交给老师</button>
+    <button id="bWall">🖼 全班作品</button>
     <button id="bFull">⛶ 全屏</button>
   </div>
 </header>
@@ -229,39 +183,15 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- 作品墙：所有小组的作品保存在这台机器的浏览器里 -->
-<div class="wall" id="wall" hidden>
-  <div class="wall-head">
-    <h2>🖼 作品墙</h2><small id="wallCount"></small>
-    <div class="tools">
-      <button id="wClear">🗑 清空作品墙</button>
-      <button id="wClose">✕ 返回画布</button>
-    </div>
-  </div>
-  <div class="wall-grid" id="wallGrid"></div>
-  <div class="wall-empty">作品墙还是空的<br><small>每组完成后，点顶部的“📌 存入作品墙”</small></div>
-</div>
-
-<div class="view" id="view" hidden>
-  <div class="wall-head">
-    <h2 id="viewName"></h2><small id="viewMeta"></small>
-    <div class="tools">
-      <button id="vLoad">✏️ 载入画布修改</button>
-      <button id="vShot">📸 保存图片</button>
-      <button id="vDel">🗑 删除</button>
-      <button id="vClose">✕ 返回作品墙</button>
-    </div>
-  </div>
-  <button class="nav prev" id="vPrev" title="上一组 (←)">‹</button>
-  <div class="big" id="viewBig"></div>
-  <button class="nav next" id="vNext" title="下一组 (→)">›</button>
-</div>
-
 <!-- 课堂模式：提交给老师 -->
 <div class="modal" id="submit" hidden>
   <div class="box">
     <h3>📤 提交给老师</h3>
     <p>提交后，作品会出现在老师的作品墙上，全班都能看到。可以修改后再次提交，以最后一次为准。</p>
+    <div id="sCodeRow" hidden>
+      <label for="sCode">课堂码（老师作品墙上显示的 4 位数字）</label>
+      <input id="sCode" maxlength="4" inputmode="numeric" placeholder="例如：5832">
+    </div>
     <label for="sName">小组名称</label>
     <input id="sName" maxlength="20" placeholder="例如：第 3 组">
     <label for="sNote">我们的说明（选填）：模型想表达什么？哪支箭头最关键？</label>
@@ -277,8 +207,7 @@
 <script>
 (() => {
   const { W, H, LIB, CFG, W_MIN, W_MAX, el, clamp, aw, drawBase, drawArrowShape, labelSide, placeLabel,
-    buildStaticSvg, exportPng, fmtTime } = GeoScene;
-  const CLASS = GeoScene.readClass();   // 通过老师的上课链接打开时为课堂模式
+    exportPng } = GeoScene;
 
   // ---------- 状态 ----------
   let arrows = [];
@@ -529,13 +458,6 @@
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (!$('submit').hidden) { if (e.key === 'Escape') $('submit').hidden = true; return; }
-    if (!$('view').hidden) {
-      if (e.key === 'ArrowLeft') $('vPrev').onclick();
-      else if (e.key === 'ArrowRight') $('vNext').onclick();
-      else if (e.key === 'Escape') closeView();
-      return;
-    }
-    if (!$('wall').hidden) { if (e.key === 'Escape') closeWall(); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) { e.preventDefault(); $('bDel').onclick(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
@@ -551,117 +473,6 @@
   const savePng = m => exportPng(m).then(() => toast('图片已保存'), () => toast('图片保存失败'));
   $('bShot').onclick = () => savePng({ arrows, showCloud, name: $('groupName').value });
 
-  // ---------- 作品墙：各组作品存在这台机器的浏览器里，互相可见 ----------
-  const WALL = 'atmos-heating-wall-v1';
-  let works = [];
-  let viewIdx = -1;
-  function loadWorks() {
-    try { works = JSON.parse(localStorage.getItem(WALL) || '[]'); } catch (e) { works = []; }
-    if (!Array.isArray(works)) works = [];
-  }
-  function saveWorks() {
-    try { localStorage.setItem(WALL, JSON.stringify(works)); } catch (e) { toast('保存失败：浏览器存储不可用'); }
-    updateWallBtn();
-  }
-  function updateWallBtn() {
-    $('bWall').textContent = works.length ? `🖼 作品墙 ${works.length}` : '🖼 作品墙';
-  }
-  $('bPin').onclick = () => {
-    if (!arrows.length) { toast('画布上还没有箭头'); return; }
-    if (CLASS) { openSubmit(); return; }
-    let name = $('groupName').value.trim();
-    if (!name) {
-      name = (prompt('请输入小组名称', '') || '').trim();
-      if (!name) return;
-      $('groupName').value = name; save();
-    }
-    const i = works.findIndex(w => w.name === name);
-    if (i >= 0 && !confirm(`作品墙上已有“${name}”的作品，要覆盖吗？`)) return;
-    const w = { name, arrows: JSON.parse(snap()), showCloud, time: Date.now() };
-    if (i >= 0) works[i] = w; else works.push(w);
-    saveWorks();
-    if (confirm(`已存入作品墙（共 ${works.length} 组）。\n清空画布，让下一组开始？`)) {
-      const before = snap();
-      arrows = []; selected = null; $('groupName').value = '';
-      commit(before); renderArrows();
-    } else {
-      toast(`已存入作品墙，共 ${works.length} 组`);
-    }
-  };
-
-  function renderWall() {
-    const grid = $('wallGrid');
-    grid.innerHTML = '';
-    $('wallCount').textContent = works.length ? `共 ${works.length} 组 · 点击作品放大查看` : '';
-    works.forEach((w, i) => {
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.appendChild(buildStaticSvg(w));
-      const cap = document.createElement('div');
-      cap.className = 'cap';
-      cap.innerHTML = '<b></b><span></span><small></small>';
-      cap.querySelector('b').textContent = w.name;
-      cap.querySelector('span').textContent = `${w.arrows.length} 支箭头`;
-      cap.querySelector('small').textContent = fmtTime(w.time);
-      card.appendChild(cap);
-      card.onclick = () => openView(i);
-      grid.appendChild(card);
-    });
-  }
-  function openWall() { renderWall(); $('wall').hidden = false; }
-  function closeWall() { $('wall').hidden = true; }
-  $('bWall').onclick = () => {
-    if (CLASS) window.open('wall.html' + GeoScene.classHash(CLASS), 'geo-lab-wall');
-    else openWall();
-  };
-  $('wClose').onclick = closeWall;
-  $('wClear').onclick = () => {
-    if (!works.length) return;
-    if (!confirm(`清空作品墙上全部 ${works.length} 组作品？此操作不能撤销。`)) return;
-    works = []; saveWorks(); renderWall();
-  };
-
-  function openView(i) {
-    const w = works[i];
-    if (!w) { closeView(); return; }
-    viewIdx = i;
-    $('viewName').textContent = w.name;
-    $('viewMeta').textContent = `${w.arrows.length} 支箭头 · ${fmtTime(w.time)} · 第 ${i + 1} / ${works.length} 个`;
-    const big = $('viewBig');
-    big.innerHTML = '';
-    big.appendChild(buildStaticSvg(w));
-    $('vPrev').disabled = i === 0;
-    $('vNext').disabled = i === works.length - 1;
-    $('view').hidden = false;
-  }
-  function closeView() { $('view').hidden = true; viewIdx = -1; }
-  $('vPrev').onclick = () => { if (viewIdx > 0) openView(viewIdx - 1); };
-  $('vNext').onclick = () => { if (viewIdx < works.length - 1) openView(viewIdx + 1); };
-  $('vClose').onclick = closeView;
-  $('vShot').onclick = () => savePng(works[viewIdx]);
-  $('vDel').onclick = () => {
-    const w = works[viewIdx];
-    if (!w || !confirm(`删除“${w.name}”的作品？`)) return;
-    works.splice(viewIdx, 1);
-    saveWorks(); renderWall();
-    if (works.length) openView(Math.min(viewIdx, works.length - 1)); else closeView();
-  };
-  $('vLoad').onclick = () => {
-    const w = works[viewIdx];
-    if (!w) return;
-    if (arrows.length && !confirm('画布上已有内容，载入会替换它（可以撤销）。继续？')) return;
-    const before = snap();
-    arrows = JSON.parse(JSON.stringify(w.arrows)).filter(a => CFG[a.key]);
-    selected = null;
-    showCloud = w.showCloud !== false;
-    $('groupName').value = w.name;
-    $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
-    drawMainBase();
-    commit(before); renderArrows();
-    closeView(); closeWall();
-    toast(`已载入“${w.name}”的作品，修改后可再次存入`);
-  };
-
   let toastTimer;
   function toast(msg) {
     const t = $('toast');
@@ -669,46 +480,61 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
-  // ---------- 课堂模式：提交到老师的作品墙（GitHub 仓库里这节课的 issue） ----------
+  // ---------- 提交给老师：作品发到课堂码对应的频道，老师作品墙实时收到 ----------
+  // 课堂码来自老师作品墙上的二维码（?k=1234）；直接打开页面时由学生手动填写
+  const CODE_KEY = 'atmos-heating-class-code';
+  let classCode = GeoScene.readCode();
+  if (!classCode) try { const c = localStorage.getItem(CODE_KEY); if (GeoScene.validCode(c)) classCode = c; } catch (e) {}
+  function setCode(c) {
+    classCode = c;
+    try { localStorage.setItem(CODE_KEY, c); } catch (e) {}
+    $('classBar').hidden = false;
+    $('classBar').textContent = '课堂码 ' + c;
+  }
+  if (classCode) setCode(classCode);
+
   let lastNote = '';
-  function openSubmit() {
+  $('bPin').onclick = () => {
+    if (!arrows.length) { toast('画布上还没有箭头'); return; }
+    $('sCodeRow').hidden = !!classCode && !!GeoScene.readCode();
+    $('sCode').value = classCode || '';
     $('sName').value = $('groupName').value.trim();
     $('sNote').value = lastNote;
     $('sGo').disabled = false; $('sGo').textContent = '提交';
     $('submit').hidden = false;
-    ($('sName').value ? $('sNote') : $('sName')).focus();
-  }
+    (!classCode ? $('sCode') : $('sName').value ? $('sNote') : $('sName')).focus();
+  };
   $('sCancel').onclick = () => { $('submit').hidden = true; };
   $('sGo').onclick = async () => {
+    const code = $('sCode').value.trim();
+    if (!GeoScene.validCode(code)) { toast('请填写老师作品墙上的 4 位课堂码'); $('sCodeRow').hidden = false; $('sCode').focus(); return; }
     const name = $('sName').value.trim();
     if (!name) { toast('请填写小组名称'); $('sName').focus(); return; }
+    setCode(code);
     $('groupName').value = name; save();
     lastNote = $('sNote').value.trim();
     $('sGo').disabled = true; $('sGo').textContent = '提交中…';
     try {
-      await GeoScene.submitWork(CLASS, { name, note: lastNote, arrows, showCloud });
+      await GeoScene.submitWork(code, { name, note: lastNote, arrows, showCloud });
       $('submit').hidden = true;
-      toast('提交成功！可以点“全班作品”看看其他组');
+      toast('提交成功！老师的作品墙上已经能看到了');
     } catch (e) {
       $('sGo').disabled = false; $('sGo').textContent = '重新提交';
-      toast('提交失败：' + (e.status ? e.message : '网络连接不上 GitHub，请稍后重试'));
+      toast(e.message);
     }
   };
-  function initClass() {
-    $('bPin').textContent = '📤 提交给老师';
-    $('bWall').textContent = '🖼 全班作品';
-    $('classBar').hidden = false;
-    $('classBar').textContent = '课堂模式';
-    $('toolTask').textContent = '小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“提交给老师”。允许出错。';
-    GeoScene.loadClass(CLASS).then(
-      d => { $('classBar').textContent = '课堂：' + d.title; },
-      e => { $('classBar').textContent = '课堂连接失败'; $('classBar').classList.add('bad'); toast(e.status ? e.message : '网络连接不上 GitHub'); });
-  }
+  $('bWall').onclick = () => {
+    let c = classCode;
+    if (!c) {
+      c = (prompt('请输入课堂码（老师作品墙上显示的 4 位数字）', '') || '').trim();
+      if (!GeoScene.validCode(c)) { if (c) toast('课堂码是 4 位数字'); return; }
+      setCode(c);
+    }
+    window.open(`wall.html?k=${c}&view=1`, 'geo-lab-wall');
+  };
 
   // ---------- 启动 ----------
   load();
-  loadWorks();
-  if (CLASS) initClass(); else updateWallBtn();
   $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
   drawMainBase();
   buildLib();

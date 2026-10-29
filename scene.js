@@ -208,70 +208,41 @@
     });
   }
 
-  // ---------- 课堂：用 GitHub 仓库的一个 issue 收集各组提交和老师评分 ----------
-  // 一节课 = 一个 issue；学生提交、老师打分都是这个 issue 下的评论。
-  // 上课链接形如 index.html#c=<令牌>.<issue 编号>；令牌只放在 # 后面，不会发送给网页服务器，也不写进任何仓库。
-  const REPO = 'longlongmai/geo-lab-submissions';
+  // ---------- 课堂：学生提交 → 中转服务 → 老师作品墙 ----------
+  // 用免注册的 ntfy.sh 消息中转：学生页把作品发到“课堂码”对应的频道，作品墙实时接收。
+  // 不需要账号和令牌；消息在中转服务上保留 12 小时，作品墙另在本机浏览器里留存一份。
+  const RELAY = 'https://ntfy.sh/';
+  const CHANNEL = 'geolab-atmos-q7m2x9-';
   const APP = 'atmos-heating';
-  const MARK = 'geo-lab';
   const KEYS = LIB.map(c => c.key);
 
-  function readClass(hash = location.hash) {
-    const m = hash.match(/[#&]c=([A-Za-z0-9_]+)\.(\d+)/);
-    return m ? { token: m[1], issue: +m[2] } : null;
+  const newCode = () => String(Math.floor(1000 + Math.random() * 9000));
+  const validCode = c => /^\d{4}$/.test(String(c || '').trim());
+  function readCode() {
+    const m = (location.search + location.hash).match(/[?#&]k=(\d{4})\b/);
+    return m ? m[1] : null;
   }
-  const classHash = c => `#c=${c.token}.${c.issue}`;
 
-  async function api(c, path, opts = {}) {
-    const r = await fetch(`https://api.github.com/repos/${REPO}${path}`, {
-      ...opts,
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${c.token}`,
-        'X-GitHub-Api-Version': '2022-11-28',
-        ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(opts.headers || {}),
-      },
-    });
-    if (r.status === 304) return { status: 304 };
-    if (!r.ok) {
-      let msg = '';
-      try { msg = (await r.json()).message || ''; } catch (e) {}
-      const err = new Error(explain(r.status, msg));
-      err.status = r.status;
-      throw err;
+  // 只发 ASCII（中文转成 \uXXXX），避免中转服务把非 ASCII 正文当成附件
+  const asciiJson = o => JSON.stringify(o).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+
+  async function send(code, obj) {
+    let r;
+    try {
+      r = await fetch(RELAY + CHANNEL + code, { method: 'POST', body: asciiJson({ app: APP, ...obj }) });
+    } catch (e) {
+      throw new Error('网络连接失败，请检查网络后重试');
     }
-    return { status: r.status, etag: r.headers.get('ETag'), link: r.headers.get('Link') || '', data: r.status === 204 ? null : await r.json() };
-  }
-  function explain(status, msg) {
-    if (status === 401) return '令牌无效或已过期，请老师重新生成上课链接';
-    if (status === 403 && /rate limit/i.test(msg)) return '访问太频繁，请稍后再试';
-    if (status === 403) return '令牌没有该仓库的 Issues 读写权限';
-    if (status === 404) return '找不到这节课（仓库或课堂编号不对，或令牌无权访问该仓库）';
-    if (status === 410) return '这节课的讨论区已被关闭';
-    if (status === 422) return '提交内容格式有误';
-    return `GitHub 返回错误 ${status}${msg ? '：' + msg : ''}`;
+    if (r.status === 429) throw new Error('提交太频繁，请过几秒再试');
+    if (!r.ok) throw new Error('提交失败（' + r.status + '），请稍后重试');
   }
 
-  // 评论正文：第一行是隐藏的数据，后面是给人看的说明（直接在 GitHub 上看 issue 也能读懂）
-  const pack = (obj, readable) => `<!-- ${MARK} ${JSON.stringify(obj)} -->\n${readable}`;
-  function unpack(body) {
-    const m = /^<!-- geo-lab (\{[\s\S]*?\}) -->/.exec(body || '');
-    if (!m) return null;
-    try { return JSON.parse(m[1]); } catch (e) { return null; }
-  }
-
-  function submitWork(c, w) {
+  function submitWork(code, w) {
     const a = w.arrows.map(x => [KEYS.indexOf(x.key), Math.round(x.x1), Math.round(x.y1), Math.round(x.x2), Math.round(x.y2), x.w || 0]);
-    const obj = { type: 'work', app: APP, name: w.name, note: w.note || '', cloud: w.showCloud === false ? 0 : 1, a };
-    const readable = `**${w.name}** 提交了模型（${a.length} 支箭头）` + (w.note ? `\n\n> ${w.note.replace(/\n/g, '\n> ')}` : '');
-    return api(c, `/issues/${c.issue}/comments`, { method: 'POST', body: JSON.stringify({ body: pack(obj, readable) }) });
+    return send(code, { type: 'work', name: w.name, note: (w.note || '').slice(0, 300), cloud: w.showCloud === false ? 0 : 1, a });
   }
-  function submitScore(c, name, scores, total, remark) {
-    const obj = { type: 'score', app: APP, name, scores, total, remark: remark || '' };
-    const readable = `老师给 **${name}** 打分：${total} 分` + (remark ? `\n\n> ${remark.replace(/\n/g, '\n> ')}` : '');
-    return api(c, `/issues/${c.issue}/comments`, { method: 'POST', body: JSON.stringify({ body: pack(obj, readable) }) });
+  function submitScore(code, name, scores, total, remark) {
+    return send(code, { type: 'score', name, scores, total, remark: remark || '' });
   }
 
   function workFromWire(o, time) {
@@ -283,42 +254,55 @@
     return { name: String(o.name || '未命名').slice(0, 20), note: String(o.note || '').slice(0, 300), arrows, showCloud: o.cloud !== 0, time };
   }
 
-  // 读一节课：课堂设置 + 全部评论（只取最新状态：每组最后一次提交、最后一次评分）
-  // ETag 条件请求：内容没变时 GitHub 返回 304，不计入访问次数
-  const cache = {};
-  async function cachedGet(c, path) {
-    const prev = cache[path];
-    const r = await api(c, path, prev ? { headers: { 'If-None-Match': prev.etag } } : {});
-    if (r.status === 304) return { changed: false, data: prev.data };
-    cache[path] = { etag: r.etag, data: r.data };
-    return { changed: true, data: r.data };
-  }
-  async function loadClass(c) {
-    const issue = await cachedGet(c, `/issues/${c.issue}`);
-    const info = issue.data;
-    let changed = issue.changed;
-    const comments = [];
-    for (let page = 1; page <= 30; page++) {
-      const r = await cachedGet(c, `/issues/${c.issue}/comments?per_page=100&page=${page}`);
-      changed = changed || r.changed;
-      comments.push(...r.data);
-      if (r.data.length < 100) break;
-    }
+  // 一节课的状态：每组最后一次提交、最后一次评分。事件按 id 去重，可重复喂入
+  function createClassState() {
+    const seen = new Set();
+    const events = [];
     const works = new Map(), scores = new Map();
-    for (const cm of comments) {
-      const o = unpack(cm.body);
-      if (!o || o.app !== APP || typeof o.name !== 'string') continue;
-      const time = Date.parse(cm.created_at);
+    function add(ev) {
+      if (!ev || seen.has(ev.id)) return false;
+      const o = ev.data;
+      if (!o || o.app !== APP || typeof o.name !== 'string' || !o.name.trim()) return false;
+      seen.add(ev.id);
+      events.push(ev);
       if (o.type === 'work') {
-        const w = workFromWire(o, time);
-        const prev = works.get(w.name);
+        const prev = works.get(o.name);
+        if (prev && prev.time > ev.time) return true;
+        const w = workFromWire(o, ev.time);
         w.versions = (prev ? prev.versions : 0) + 1;
         works.set(w.name, w);
       } else if (o.type === 'score') {
-        scores.set(o.name, { scores: o.scores || {}, total: +o.total || 0, remark: String(o.remark || ''), time });
+        const prev = scores.get(o.name);
+        if (!prev || prev.time <= ev.time) scores.set(o.name, { scores: o.scores || {}, total: +o.total || 0, remark: String(o.remark || ''), time: ev.time });
       }
+      return true;
     }
-    return { changed, title: info.title, state: info.state, config: unpack(info.body) || {}, works, scores };
+    return { add, works, scores, events };
+  }
+
+  // 实时接收：一条长连接（SSE），断线后从最后一条消息接着收
+  function subscribe(code, onEvent, onStatus) {
+    let es = null, lastId = 'all', closed = false, retry = null;
+    function open() {
+      es = new EventSource(`${RELAY}${CHANNEL}${code}/sse?since=${lastId}`);
+      es.onopen = () => onStatus(true);
+      es.onmessage = m => {
+        let msg;
+        try { msg = JSON.parse(m.data); } catch (e) { return; }
+        if (msg.event !== 'message') return;
+        lastId = msg.id;
+        let data = null;
+        try { data = JSON.parse(msg.message); } catch (e) {}
+        onEvent({ id: msg.id, time: msg.time * 1000, data });
+      };
+      es.onerror = () => {
+        onStatus(false);
+        es.close();
+        if (!closed) { clearTimeout(retry); retry = setTimeout(open, 3000); }
+      };
+    }
+    open();
+    return () => { closed = true; clearTimeout(retry); es && es.close(); };
   }
 
   const DEFAULT_RUBRIC = [
@@ -327,23 +311,9 @@
     { name: '粗细合理', max: 3, hint: '箭头粗细是否反映能量多少（如大气逆辐射小于地面辐射）' },
   ];
 
-  async function createClass(token, title, rubric) {
-    const c = { token, issue: 0 };
-    const cfg = { type: 'class', app: APP, rubric };
-    const readable = `大气受热过程 · 小组拖拽建模\n\n各组提交和老师评分都记录在下面的评论里。\n\n评分规则：\n` +
-      rubric.map(r => `- ${r.name}（${r.max} 分）：${r.hint || ''}`).join('\n');
-    const r = await api(c, '/issues', { method: 'POST', body: JSON.stringify({ title, body: pack(cfg, readable) }) });
-    return { token, issue: r.data.number, title: r.data.title };
-  }
-  async function listClasses(token) {
-    const r = await api({ token }, '/issues?state=all&per_page=30&sort=created&direction=desc');
-    return r.data.filter(i => !i.pull_request && (unpack(i.body) || {}).app === APP)
-      .map(i => ({ issue: i.number, title: i.title, state: i.state, comments: i.comments, created: i.created_at }));
-  }
-
   window.GeoScene = {
     NS, W, H, LIB, CFG, W_MIN, W_MAX, SW, LW,
     el, clamp, aw, drawBase, drawArrowShape, labelSide, placeLabel, buildStaticSvg, exportPng, fmtTime,
-    REPO, readClass, classHash, submitWork, submitScore, loadClass, createClass, listClasses, DEFAULT_RUBRIC,
+    newCode, validCode, readCode, submitWork, submitScore, createClassState, subscribe, DEFAULT_RUBRIC,
   };
 })();
