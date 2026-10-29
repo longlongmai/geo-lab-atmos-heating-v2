@@ -109,6 +109,52 @@
   .handle { cursor: pointer; }
   .handle.wh { cursor: ew-resize; }
 
+  /* ---------- 作品墙 ---------- */
+  .wall {
+    position: fixed; inset: 0; z-index: 50; background: var(--bg);
+    display: flex; flex-direction: column;
+  }
+  .wall[hidden] { display: none; }
+  .wall-head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 8px 14px; background: var(--navy); color: #fff; flex-shrink: 0;
+  }
+  .wall-head h2 { font-size: 1.15rem; }
+  .wall-head small { font-size: .85rem; opacity: .85; }
+  .wall-head .tools { margin-left: auto; }
+  .wall-grid {
+    flex: 1; overflow: auto; padding: 16px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; align-content: start;
+  }
+  .wall-grid:empty { display: none; }
+  .wall-empty { display: none; margin: auto; text-align: center; color: var(--muted); font-size: 1.15rem; line-height: 1.9; }
+  .wall-grid:empty + .wall-empty { display: block; }
+  .card {
+    background: #fff; border-radius: 14px; overflow: hidden; cursor: pointer;
+    box-shadow: 0 6px 22px rgba(40, 90, 140, .14); border: 3px solid transparent;
+    transition: transform .12s, border-color .12s;
+  }
+  .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .card svg { width: 100%; display: block; background: #dcecf8; }
+  .card .cap { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; }
+  .card .cap b { font-size: 1.05rem; color: var(--navy); }
+  .card .cap span { font-size: .85rem; color: var(--muted); }
+  .card .cap small { font-size: .8rem; color: var(--muted); margin-left: auto; }
+
+  /* 单组放大查看 */
+  .view { position: fixed; inset: 0; z-index: 60; background: rgba(10, 25, 40, .94); display: flex; flex-direction: column; }
+  .view[hidden] { display: none; }
+  .view .wall-head { background: transparent; }
+  .view .big { flex: 1; min-height: 0; padding: 4px 76px 18px; }
+  .view .big svg { width: 100%; height: 100%; display: block; }
+  .view .nav {
+    position: absolute; top: 50%; transform: translateY(-50%); width: 58px; height: 58px; border-radius: 50%;
+    border: 0; background: rgba(255,255,255,.92); color: var(--navy); font-size: 1.9rem; line-height: 1; cursor: pointer;
+  }
+  .view .nav:disabled { opacity: .25; cursor: default; }
+  .view .nav.prev { left: 10px; }
+  .view .nav.next { right: 10px; }
+
   @media (max-width: 860px) {
     main { flex-direction: column; }
     aside { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 42vh; }
@@ -122,7 +168,7 @@
 
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
-  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型。允许出错。</div>
+  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“存入作品墙”。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
     <span class="sep"></span>
@@ -132,6 +178,8 @@
     <button id="bClear">🔄 清空</button>
     <span class="sep"></span>
     <button id="bShot">📸 保存图片</button>
+    <button id="bPin" class="on">📌 存入作品墙</button>
+    <button id="bWall">🖼 作品墙</button>
     <button id="bFull">⛶ 全屏</button>
   </div>
 </header>
@@ -158,6 +206,34 @@
 </main>
 
 <div class="toast" id="toast"></div>
+
+<!-- 作品墙：所有小组的作品保存在这台机器的浏览器里 -->
+<div class="wall" id="wall" hidden>
+  <div class="wall-head">
+    <h2>🖼 作品墙</h2><small id="wallCount"></small>
+    <div class="tools">
+      <button id="wClear">🗑 清空作品墙</button>
+      <button id="wClose">✕ 返回画布</button>
+    </div>
+  </div>
+  <div class="wall-grid" id="wallGrid"></div>
+  <div class="wall-empty">作品墙还是空的<br><small>每组完成后，点顶部的“📌 存入作品墙”</small></div>
+</div>
+
+<div class="view" id="view" hidden>
+  <div class="wall-head">
+    <h2 id="viewName"></h2><small id="viewMeta"></small>
+    <div class="tools">
+      <button id="vLoad">✏️ 载入画布修改</button>
+      <button id="vShot">📸 保存图片</button>
+      <button id="vDel">🗑 删除</button>
+      <button id="vClose">✕ 返回作品墙</button>
+    </div>
+  </div>
+  <button class="nav prev" id="vPrev" title="上一组 (←)">‹</button>
+  <div class="big" id="viewBig"></div>
+  <button class="nav next" id="vNext" title="下一组 (→)">›</button>
+</div>
 
 <script>
 (() => {
@@ -195,10 +271,10 @@
   };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  // ---------- 底图 ----------
-  function drawBase() {
-    gBase.innerHTML = '';
-    const defs = el('defs', {}, gBase);
+  // ---------- 底图（parent 默认为主画布；作品墙缩略图传入自己的容器） ----------
+  function drawBase(parent = gBase, cloudOn = showCloud) {
+    parent.innerHTML = '';
+    const defs = el('defs', {}, parent);
     defs.innerHTML = `
       <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#0f3d6e"/><stop offset=".32" stop-color="#3f86c4"/>
@@ -214,18 +290,18 @@
       </linearGradient>
       <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
       <filter id="sel" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#1f8fc4" flood-opacity=".9"/></filter>`;
-    el('rect', { width: W, height: H, fill: 'url(#sky)' }, gBase);
+    el('rect', { width: W, height: H, fill: 'url(#sky)' }, parent);
     // 星点（太空）
-    const stars = el('g', { fill: '#fff', opacity: .7 }, gBase);
+    const stars = el('g', { fill: '#fff', opacity: .7 }, parent);
     [[420, 40], [520, 70], [610, 30], [720, 60], [820, 25], [900, 80], [960, 40], [360, 90], [660, 110], [860, 130]]
       .forEach(([x, y], i) => el('circle', { cx: x, cy: y, r: i % 3 ? 1.2 : 1.8 }, stars));
     // 大气层
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'url(#atmos)' }, gBase);
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'none', stroke: '#fff', 'stroke-width': 2.5, 'stroke-dasharray': '14 10', opacity: .9 }, gBase);
-    label(gBase, '大气上界', 900, 282, 24, '#fff', 'none');
-    label(gBase, '大 气 层', 680, 420, 18, '#2c5d86', 'none').setAttribute('opacity', '.55');
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'url(#atmos)' }, parent);
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'none', stroke: '#fff', 'stroke-width': 2.5, 'stroke-dasharray': '14 10', opacity: .9 }, parent);
+    label(parent, '大气上界', 900, 282, 24, '#fff', 'none');
+    label(parent, '大 气 层', 680, 420, 18, '#2c5d86', 'none').setAttribute('opacity', '.55');
     // 太阳
-    const sun = el('g', {}, gBase);
+    const sun = el('g', {}, parent);
     el('circle', { cx: 120, cy: 90, r: 95, fill: 'url(#sunGlow)' }, sun);
     for (let i = 0; i < 12; i++) {
       const t = i * Math.PI / 6;
@@ -233,19 +309,19 @@
         stroke: '#ffd23f', 'stroke-width': 4, 'stroke-linecap': 'round' }, sun);
     }
     el('circle', { cx: 120, cy: 90, r: 44, fill: '#ffcf1f', stroke: '#ffe680', 'stroke-width': 3 }, sun);
-    label(gBase, '太阳', 120, 98, 20, '#7a4b00', 'none');
+    label(parent, '太阳', 120, 98, 20, '#7a4b00', 'none');
     // 云
-    if (showCloud) { cloud(320, 300, 1.2); cloud(680, 262, 1.0); }
+    if (cloudOn) { cloud(parent, 320, 300, 1.2); cloud(parent, 680, 262, 1.0); }
     // 地面
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND + 8, fill: '#3a8fd0', opacity: .5 }, gBase);
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND, fill: 'url(#land)' }, gBase);
-    label(gBase, '地 面', 500, 560, 26, '#fff', 'none').setAttribute('opacity', '.9');
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND + 8, fill: '#3a8fd0', opacity: .5 }, parent);
+    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND, fill: 'url(#land)' }, parent);
+    label(parent, '地 面', 500, 560, 26, '#fff', 'none').setAttribute('opacity', '.9');
     // 固定辐射（底图自带）
-    scatter(110, 420);
-    fixed(110, 580, -Math.PI * .65, 80, 4, SW, '地面反射');
-    fixed(480, 452, -Math.PI / 2, 292, 4, LW, '射向宇宙的地面辐射', 'above');
-    fixed(360, 280, -Math.PI / 2.8, 100, 8, SW, '云层反射（太阳辐射）', 'left');
-    fixed(680, 228, -Math.PI / 2, 150, 7, LW, '射向宇宙的大气辐射', 'side');
+    scatter(parent, 110, 420);
+    fixed(parent, 110, 580, -Math.PI * .65, 80, 4, SW, '地面反射');
+    fixed(parent, 480, 452, -Math.PI / 2, 292, 4, LW, '射向宇宙的地面辐射', 'above');
+    fixed(parent, 360, 280, -Math.PI / 2.8, 100, 8, SW, '云层反射（太阳辐射）', 'left');
+    fixed(parent, 680, 228, -Math.PI / 2, 150, 7, LW, '射向宇宙的大气辐射', 'side');
   }
 
   function label(parent, text, x, y, size, fill = '#1e2b3a', stroke = '#fff', anchor = 'middle') {
@@ -256,15 +332,15 @@
     return t;
   }
 
-  function cloud(x, y, s) {
-    const g = el('g', { transform: `translate(${x} ${y}) scale(${s})`, fill: '#fff' }, gBase);
+  function cloud(parent, x, y, s) {
+    const g = el('g', { transform: `translate(${x} ${y}) scale(${s})`, fill: '#fff' }, parent);
     el('g', { filter: 'url(#soft)', opacity: .7 }, g).innerHTML =
       '<ellipse cx="15" cy="12" rx="80" ry="30"/>';
     [[-30, 10, 25], [0, -10, 35], [35, 0, 28], [60, 10, 22], [15, 15, 30]].forEach(([cx, cy, r]) => el('circle', { cx, cy, r }, g));
   }
 
-  function scatter(x, y) {
-    const g = el('g', {}, gBase);
+  function scatter(parent, x, y) {
+    const g = el('g', {}, parent);
     for (let i = 0; i < 8; i++) {
       const t = i * Math.PI / 4;
       drawArrowShape(g, x + Math.cos(t) * 10, y + Math.sin(t) * 10, x + Math.cos(t) * 46, y + Math.sin(t) * 46, 4, SW, 9);
@@ -273,9 +349,9 @@
     label(g, '大气散射', x, y - 56, 19);
   }
 
-  function fixed(x, y, ang, len, w, color, text, mode) {
+  function fixed(parent, x, y, ang, len, w, color, text, mode) {
     const x2 = x + Math.cos(ang) * len, y2 = y + Math.sin(ang) * len;
-    const g = el('g', {}, gBase);
+    const g = el('g', {}, parent);
     drawArrowShape(g, x, y, x2, y2, w, color);
     if (mode === 'end') label(g, text, x2 + 10, y2 + 4, 18, '#1e2b3a', '#fff', 'start');
     else if (mode === 'left') label(g, text, (x + x2) / 2 - 12, (y + y2) / 2 + 6, 18, '#1e2b3a', '#fff', 'end');
@@ -359,6 +435,23 @@
     $('bRedo').disabled = !redoStack.length;
     updateCounts();
     save();
+  }
+
+  // 静态渲染：把一份作品（arrows + showCloud）画成独立 SVG，供作品墙缩略图、放大查看和导出图片共用
+  function drawStaticArrows(parent, list) {
+    list.forEach(a => {
+      const c = CFG[a.key];
+      if (!c) return;
+      const g = el('g', {}, parent);
+      drawArrowShape(g, a.x1, a.y1, a.x2, a.y2, aw(a), c.color);
+      placeLabel(g, a, c.label, 19);
+    });
+  }
+  function buildStaticSvg(model) {
+    const s = el('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet' });
+    drawBase(el('g', {}, s), model.showCloud !== false);
+    drawStaticArrows(el('g', {}, s), model.arrows || []);
+    return s;
   }
 
   // ---------- 历史 ----------
@@ -550,6 +643,13 @@
 
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
+    if (!$('view').hidden) {
+      if (e.key === 'ArrowLeft') $('vPrev').onclick();
+      else if (e.key === 'ArrowRight') $('vNext').onclick();
+      else if (e.key === 'Escape') closeView();
+      return;
+    }
+    if (!$('wall').hidden) { if (e.key === 'Escape') closeWall(); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) { e.preventDefault(); $('bDel').onclick(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
@@ -562,16 +662,14 @@
   });
 
   // ---------- 保存图片（2 倍清晰度，带小组名与时间） ----------
-  $('bShot').onclick = () => {
-    const clone = svg.cloneNode(true);
-    clone.querySelector('#ui').innerHTML = '';
-    clone.querySelectorAll('[filter="url(#sel)"]').forEach(n => n.removeAttribute('filter'));
-    clone.setAttribute('width', W); clone.setAttribute('height', H);
+  function exportPng(model) {
+    const s = buildStaticSvg(model);
+    s.setAttribute('width', W); s.setAttribute('height', H);
     const style = document.createElementNS(NS, 'style');
     style.textContent = `text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
       .lbl{font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round}`;
-    clone.insertBefore(style, clone.firstChild);
-    const data = new XMLSerializer().serializeToString(clone);
+    s.insertBefore(style, s.firstChild);
+    const data = new XMLSerializer().serializeToString(s);
     const img = new Image();
     img.onload = () => {
       const S = 2, top = 64;
@@ -583,8 +681,8 @@
       cx.fillStyle = '#fff'; cx.font = 'bold 24px "Microsoft YaHei", sans-serif'; cx.textBaseline = 'middle';
       cx.fillText('大气受热过程模型', 20, top / 2);
       cx.font = '18px "Microsoft YaHei", sans-serif'; cx.textAlign = 'right';
-      const g = $('groupName').value.trim();
-      const now = new Date();
+      const g = (model.name || '').trim();
+      const now = model.time ? new Date(model.time) : new Date();
       const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       cx.fillText((g ? g + '　' : '') + ts, W - 20, top / 2);
       cx.drawImage(img, 0, top, W, H);
@@ -595,6 +693,119 @@
       toast('图片已保存');
     };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data);
+  }
+  $('bShot').onclick = () => exportPng({ arrows, showCloud, name: $('groupName').value });
+
+  // ---------- 作品墙：各组作品存在这台机器的浏览器里，互相可见 ----------
+  const WALL = 'atmos-heating-wall-v1';
+  let works = [];
+  let viewIdx = -1;
+  function loadWorks() {
+    try { works = JSON.parse(localStorage.getItem(WALL) || '[]'); } catch (e) { works = []; }
+    if (!Array.isArray(works)) works = [];
+  }
+  function saveWorks() {
+    try { localStorage.setItem(WALL, JSON.stringify(works)); } catch (e) { toast('保存失败：浏览器存储不可用'); }
+    updateWallBtn();
+  }
+  function updateWallBtn() {
+    $('bWall').textContent = works.length ? `🖼 作品墙 ${works.length}` : '🖼 作品墙';
+  }
+  function fmtTime(t) {
+    const d = new Date(t);
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  $('bPin').onclick = () => {
+    if (!arrows.length) { toast('画布上还没有箭头'); return; }
+    let name = $('groupName').value.trim();
+    if (!name) {
+      name = (prompt('请输入小组名称', '') || '').trim();
+      if (!name) return;
+      $('groupName').value = name; save();
+    }
+    const i = works.findIndex(w => w.name === name);
+    if (i >= 0 && !confirm(`作品墙上已有“${name}”的作品，要覆盖吗？`)) return;
+    const w = { name, arrows: JSON.parse(snap()), showCloud, time: Date.now() };
+    if (i >= 0) works[i] = w; else works.push(w);
+    saveWorks();
+    if (confirm(`已存入作品墙（共 ${works.length} 组）。\n清空画布，让下一组开始？`)) {
+      const before = snap();
+      arrows = []; selected = null; $('groupName').value = '';
+      commit(before); renderArrows();
+    } else {
+      toast(`已存入作品墙，共 ${works.length} 组`);
+    }
+  };
+
+  function renderWall() {
+    const grid = $('wallGrid');
+    grid.innerHTML = '';
+    $('wallCount').textContent = works.length ? `共 ${works.length} 组 · 点击作品放大查看` : '';
+    works.forEach((w, i) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(buildStaticSvg(w));
+      const cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.innerHTML = '<b></b><span></span><small></small>';
+      cap.querySelector('b').textContent = w.name;
+      cap.querySelector('span').textContent = `${w.arrows.length} 支箭头`;
+      cap.querySelector('small').textContent = fmtTime(w.time);
+      card.appendChild(cap);
+      card.onclick = () => openView(i);
+      grid.appendChild(card);
+    });
+  }
+  function openWall() { renderWall(); $('wall').hidden = false; }
+  function closeWall() { $('wall').hidden = true; }
+  $('bWall').onclick = openWall;
+  $('wClose').onclick = closeWall;
+  $('wClear').onclick = () => {
+    if (!works.length) return;
+    if (!confirm(`清空作品墙上全部 ${works.length} 组作品？此操作不能撤销。`)) return;
+    works = []; saveWorks(); renderWall();
+  };
+
+  function openView(i) {
+    const w = works[i];
+    if (!w) { closeView(); return; }
+    viewIdx = i;
+    $('viewName').textContent = w.name;
+    $('viewMeta').textContent = `${w.arrows.length} 支箭头 · ${fmtTime(w.time)} · 第 ${i + 1} / ${works.length} 个`;
+    const big = $('viewBig');
+    big.innerHTML = '';
+    big.appendChild(buildStaticSvg(w));
+    $('vPrev').disabled = i === 0;
+    $('vNext').disabled = i === works.length - 1;
+    $('view').hidden = false;
+  }
+  function closeView() { $('view').hidden = true; viewIdx = -1; }
+  $('vPrev').onclick = () => { if (viewIdx > 0) openView(viewIdx - 1); };
+  $('vNext').onclick = () => { if (viewIdx < works.length - 1) openView(viewIdx + 1); };
+  $('vClose').onclick = closeView;
+  $('vShot').onclick = () => exportPng(works[viewIdx]);
+  $('vDel').onclick = () => {
+    const w = works[viewIdx];
+    if (!w || !confirm(`删除“${w.name}”的作品？`)) return;
+    works.splice(viewIdx, 1);
+    saveWorks(); renderWall();
+    if (works.length) openView(Math.min(viewIdx, works.length - 1)); else closeView();
+  };
+  $('vLoad').onclick = () => {
+    const w = works[viewIdx];
+    if (!w) return;
+    if (arrows.length && !confirm('画布上已有内容，载入会替换它（可以撤销）。继续？')) return;
+    const before = snap();
+    arrows = JSON.parse(JSON.stringify(w.arrows)).filter(a => CFG[a.key]);
+    selected = null;
+    showCloud = w.showCloud !== false;
+    $('groupName').value = w.name;
+    $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
+    drawBase();
+    commit(before); renderArrows();
+    closeView(); closeWall();
+    toast(`已载入“${w.name}”的作品，修改后可再次存入`);
   };
 
   let toastTimer;
@@ -606,6 +817,8 @@
 
   // ---------- 启动 ----------
   load();
+  loadWorks();
+  updateWallBtn();
   $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
   drawBase();
   buildLib();
