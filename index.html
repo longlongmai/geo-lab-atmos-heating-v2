@@ -155,6 +155,27 @@
   .view .nav.prev { left: 10px; }
   .view .nav.next { right: 10px; }
 
+  /* 课堂模式：提交弹层 */
+  .modal { position: fixed; inset: 0; z-index: 70; background: rgba(10, 25, 40, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal[hidden] { display: none; }
+  .modal .box { background: #fff; border-radius: 14px; padding: 18px 20px; width: min(560px, 100%); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .modal h3 { font-size: 1.15rem; color: var(--navy); margin-bottom: 4px; }
+  .modal p { font-size: .88rem; color: var(--muted); line-height: 1.5; margin-bottom: 12px; }
+  .modal label { display: block; font-size: .88rem; color: var(--muted); margin: 10px 0 4px; }
+  .modal input, .modal textarea {
+    width: 100%; font: inherit; font-size: 1rem; padding: 8px 10px; border-radius: 8px;
+    border: 1.5px solid var(--line); outline: none; -webkit-user-select: text; user-select: text;
+  }
+  .modal textarea { height: 96px; resize: vertical; }
+  .modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+  .modal .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .modal .row button { font: inherit; font-size: .95rem; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; background: #e3f1fb; color: var(--navy); }
+  .modal .row button.primary { background: var(--accent); color: #fff; }
+  .modal .row button:disabled { opacity: .5; cursor: default; }
+  .classbar { font-size: .85rem; background: #ffd666; color: var(--navy); border-radius: 20px; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
+  .classbar[hidden] { display: none; }
+  .classbar.bad { background: #ffd1cc; }
+
   @media (max-width: 860px) {
     main { flex-direction: column; }
     aside { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 42vh; }
@@ -168,7 +189,8 @@
 
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
-  <div class="task">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“存入作品墙”。允许出错。</div>
+  <span class="classbar" id="classBar" hidden></span>
+  <div class="task" id="toolTask">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“存入作品墙”。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
     <span class="sep"></span>
@@ -235,23 +257,28 @@
   <button class="nav next" id="vNext" title="下一组 (→)">›</button>
 </div>
 
+<!-- 课堂模式：提交给老师 -->
+<div class="modal" id="submit" hidden>
+  <div class="box">
+    <h3>📤 提交给老师</h3>
+    <p>提交后，作品会出现在老师的作品墙上，全班都能看到。可以修改后再次提交，以最后一次为准。</p>
+    <label for="sName">小组名称</label>
+    <input id="sName" maxlength="20" placeholder="例如：第 3 组">
+    <label for="sNote">我们的说明（选填）：模型想表达什么？哪支箭头最关键？</label>
+    <textarea id="sNote" maxlength="300" placeholder="例如：大气逆辐射把热量还给地面，起到保温作用……"></textarea>
+    <div class="row">
+      <button id="sCancel">取消</button>
+      <button id="sGo" class="primary">提交</button>
+    </div>
+  </div>
+</div>
+
+<script src="scene.js"></script>
 <script>
 (() => {
-  const NS = 'http://www.w3.org/2000/svg';
-  const W = 1000, H = 625;
-  const EARTH = { x: 500, y: 1100 }, R_GROUND = 650, R_TOP = 890;
-  const SW = '#f5b400', LW = '#f0663a';
-
-  // 可拖拽素材（与原页面一致的 6 种）
-  const LIB = [
-    { key: 'solar',            label: '太阳短波辐射',       color: SW, w: 12, len: 130 },
-    { key: 'atmosAbsorbSolar', label: '大气吸收（太阳辐射）', color: SW, w: 7,  len: 90  },
-    { key: 'surfaceSolar',     label: '到达地面太阳辐射',    color: SW, w: 9,  len: 120 },
-    { key: 'groundLongwave',   label: '地面长波辐射',       color: LW, w: 9,  len: 120 },
-    { key: 'atmosAbsorbGround',label: '大气吸收地面辐射',    color: LW, w: 8,  len: 100 },
-    { key: 'backRadiation',    label: '大气逆辐射',         color: LW, w: 7,  len: 110 },
-  ];
-  const CFG = Object.fromEntries(LIB.map(c => [c.key, c]));
+  const { W, H, LIB, CFG, W_MIN, W_MAX, el, clamp, aw, drawBase, drawArrowShape, labelSide, placeLabel,
+    buildStaticSvg, exportPng, fmtTime } = GeoScene;
+  const CLASS = GeoScene.readClass();   // 通过老师的上课链接打开时为课堂模式
 
   // ---------- 状态 ----------
   let arrows = [];
@@ -263,135 +290,10 @@
   const $ = id => document.getElementById(id);
   const svg = $('scene'), gBase = $('base'), gArrows = $('arrows'), gUI = $('ui');
 
-  const el = (tag, attrs = {}, parent) => {
-    const e = document.createElementNS(NS, tag);
-    for (const k in attrs) e.setAttribute(k, attrs[k]);
-    if (parent) parent.appendChild(e);
-    return e;
-  };
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
-  // ---------- 底图（parent 默认为主画布；作品墙缩略图传入自己的容器） ----------
-  function drawBase(parent = gBase, cloudOn = showCloud) {
-    parent.innerHTML = '';
-    const defs = el('defs', {}, parent);
-    defs.innerHTML = `
-      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#0f3d6e"/><stop offset=".32" stop-color="#3f86c4"/>
-        <stop offset=".62" stop-color="#9ccdee"/><stop offset="1" stop-color="#e3f3ff"/>
-      </linearGradient>
-      <radialGradient id="sunGlow"><stop offset="0" stop-color="#fff3a6" stop-opacity=".95"/><stop offset="1" stop-color="#ffe066" stop-opacity="0"/></radialGradient>
-      <radialGradient id="atmos" cx="${EARTH.x}" cy="${EARTH.y}" r="${R_TOP}" gradientUnits="userSpaceOnUse">
-        <stop offset="${R_GROUND / R_TOP}" stop-color="#bfe3ff" stop-opacity=".55"/>
-        <stop offset="1" stop-color="#bfe3ff" stop-opacity=".05"/>
-      </radialGradient>
-      <linearGradient id="land" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#8bc34a"/><stop offset=".25" stop-color="#689f38"/><stop offset="1" stop-color="#4e7a2a"/>
-      </linearGradient>
-      <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
-      <filter id="sel" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#1f8fc4" flood-opacity=".9"/></filter>`;
-    el('rect', { width: W, height: H, fill: 'url(#sky)' }, parent);
-    // 星点（太空）
-    const stars = el('g', { fill: '#fff', opacity: .7 }, parent);
-    [[420, 40], [520, 70], [610, 30], [720, 60], [820, 25], [900, 80], [960, 40], [360, 90], [660, 110], [860, 130]]
-      .forEach(([x, y], i) => el('circle', { cx: x, cy: y, r: i % 3 ? 1.2 : 1.8 }, stars));
-    // 大气层
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'url(#atmos)' }, parent);
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_TOP, fill: 'none', stroke: '#fff', 'stroke-width': 2.5, 'stroke-dasharray': '14 10', opacity: .9 }, parent);
-    label(parent, '大气上界', 900, 282, 24, '#fff', 'none');
-    label(parent, '大 气 层', 680, 420, 18, '#2c5d86', 'none').setAttribute('opacity', '.55');
-    // 太阳
-    const sun = el('g', {}, parent);
-    el('circle', { cx: 120, cy: 90, r: 95, fill: 'url(#sunGlow)' }, sun);
-    for (let i = 0; i < 12; i++) {
-      const t = i * Math.PI / 6;
-      el('line', { x1: 120 + Math.cos(t) * 54, y1: 90 + Math.sin(t) * 54, x2: 120 + Math.cos(t) * 72, y2: 90 + Math.sin(t) * 72,
-        stroke: '#ffd23f', 'stroke-width': 4, 'stroke-linecap': 'round' }, sun);
-    }
-    el('circle', { cx: 120, cy: 90, r: 44, fill: '#ffcf1f', stroke: '#ffe680', 'stroke-width': 3 }, sun);
-    label(parent, '太阳', 120, 98, 20, '#7a4b00', 'none');
-    // 云
-    if (cloudOn) { cloud(parent, 320, 300, 1.2); cloud(parent, 680, 262, 1.0); }
-    // 地面
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND + 8, fill: '#3a8fd0', opacity: .5 }, parent);
-    el('circle', { cx: EARTH.x, cy: EARTH.y, r: R_GROUND, fill: 'url(#land)' }, parent);
-    label(parent, '地 面', 500, 560, 26, '#fff', 'none').setAttribute('opacity', '.9');
-    // 固定辐射（底图自带）
-    scatter(parent, 110, 420);
-    fixed(parent, 110, 580, -Math.PI * .65, 80, 4, SW, '地面反射');
-    fixed(parent, 480, 452, -Math.PI / 2, 292, 4, LW, '射向宇宙的地面辐射', 'above');
-    fixed(parent, 360, 280, -Math.PI / 2.8, 100, 8, SW, '云层反射（太阳辐射）', 'left');
-    fixed(parent, 680, 228, -Math.PI / 2, 150, 7, LW, '射向宇宙的大气辐射', 'side');
-  }
-
-  function label(parent, text, x, y, size, fill = '#1e2b3a', stroke = '#fff', anchor = 'middle') {
-    const t = el('text', { x, y, 'font-size': size, 'text-anchor': anchor, class: 'lbl' }, parent);
-    t.style.fill = fill;
-    if (stroke === 'none') t.style.stroke = 'none';
-    t.textContent = text;
-    return t;
-  }
-
-  function cloud(parent, x, y, s) {
-    const g = el('g', { transform: `translate(${x} ${y}) scale(${s})`, fill: '#fff' }, parent);
-    el('g', { filter: 'url(#soft)', opacity: .7 }, g).innerHTML =
-      '<ellipse cx="15" cy="12" rx="80" ry="30"/>';
-    [[-30, 10, 25], [0, -10, 35], [35, 0, 28], [60, 10, 22], [15, 15, 30]].forEach(([cx, cy, r]) => el('circle', { cx, cy, r }, g));
-  }
-
-  function scatter(parent, x, y) {
-    const g = el('g', {}, parent);
-    for (let i = 0; i < 8; i++) {
-      const t = i * Math.PI / 4;
-      drawArrowShape(g, x + Math.cos(t) * 10, y + Math.sin(t) * 10, x + Math.cos(t) * 46, y + Math.sin(t) * 46, 4, SW, 9);
-    }
-    el('circle', { cx: x, cy: y, r: 5, fill: '#7a6450' }, g);
-    label(g, '大气散射', x, y - 56, 19);
-  }
-
-  function fixed(parent, x, y, ang, len, w, color, text, mode) {
-    const x2 = x + Math.cos(ang) * len, y2 = y + Math.sin(ang) * len;
-    const g = el('g', {}, parent);
-    drawArrowShape(g, x, y, x2, y2, w, color);
-    if (mode === 'end') label(g, text, x2 + 10, y2 + 4, 18, '#1e2b3a', '#fff', 'start');
-    else if (mode === 'left') label(g, text, (x + x2) / 2 - 12, (y + y2) / 2 + 6, 18, '#1e2b3a', '#fff', 'end');
-    else if (mode === 'side') label(g, text, (x + x2) / 2 + 14, (y + y2) / 2, 18, '#1e2b3a', '#fff', 'start');
-    else if (mode === 'above') label(g, text, x2, y2 - 14, 18);
-    else label(g, text, (x + x2) / 2, (y + y2) / 2 - 14, 18);
-  }
-
-  // 画一支箭头（杆 + 头），返回 {dx,dy,len}
-  function drawArrowShape(parent, x1, y1, x2, y2, w, color, headOverride) {
-    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len, uy = dy / len;
-    const head = Math.min(headOverride || Math.max(12, w * 2.1), len * .6);
-    const bx = x2 - ux * head, by = y2 - uy * head, hw = Math.max(head * .62, w * 1.1);
-    el('line', { x1, y1, x2: bx + ux * 1, y2: by + uy * 1, stroke: color, 'stroke-width': w, 'stroke-linecap': 'round' }, parent);
-    el('polygon', { points: `${x2},${y2} ${bx - uy * hw},${by + ux * hw} ${bx + uy * hw},${by - ux * hw}`, fill: color }, parent);
-    return { ux, uy, len };
-  }
-
-  function labelSide(a) {
-    const dx = a.x2 - a.x1, dy = a.y2 - a.y1;
-    const vertical = Math.abs(dy) > Math.abs(dx) * 1.2;
-    const side = (a.x1 + a.x2) / 2 > 860 ? -1 : 1;   // 靠右边缘时标签放左侧
-    return { vertical, side };
-  }
-
-  // 标签放置：横向箭头放上方，竖向箭头放右侧
-  function placeLabel(parent, a, text, size) {
-    const dx = a.x2 - a.x1, dy = a.y2 - a.y1, len = Math.hypot(dx, dy) || 1;
-    const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
-    const { vertical, side } = labelSide(a);
-    if (vertical) {
-      return label(parent, text, mx + side * (aw(a) + 10), my + 6, size, '#1e2b3a', '#fff', side > 0 ? 'start' : 'end');
-    }
-    return label(parent, text, mx, my - aw(a) - 10, size);
-  }
+  const drawMainBase = () => drawBase(gBase, showCloud);
 
   // 粗细：每支箭头可单独设置，旧数据回退到素材默认值
-  const W_MIN = 3, W_MAX = 40, W_GAP = 14;
-  const aw = a => a.w ?? CFG[a.key].w;
+  const W_GAP = 14;
   // 粗细手柄放在箭头中点、与标签相反的一侧
   function widthHandle(a) {
     const dx = a.x2 - a.x1, dy = a.y2 - a.y1, len = Math.hypot(dx, dy) || 1;
@@ -435,23 +337,6 @@
     $('bRedo').disabled = !redoStack.length;
     updateCounts();
     save();
-  }
-
-  // 静态渲染：把一份作品（arrows + showCloud）画成独立 SVG，供作品墙缩略图、放大查看和导出图片共用
-  function drawStaticArrows(parent, list) {
-    list.forEach(a => {
-      const c = CFG[a.key];
-      if (!c) return;
-      const g = el('g', {}, parent);
-      drawArrowShape(g, a.x1, a.y1, a.x2, a.y2, aw(a), c.color);
-      placeLabel(g, a, c.label, 19);
-    });
-  }
-  function buildStaticSvg(model) {
-    const s = el('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet' });
-    drawBase(el('g', {}, s), model.showCloud !== false);
-    drawStaticArrows(el('g', {}, s), model.arrows || []);
-    return s;
   }
 
   // ---------- 历史 ----------
@@ -617,7 +502,7 @@
   $('bCloud').onclick = () => {
     showCloud = !showCloud;
     $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
-    drawBase(); save();
+    drawMainBase(); save();
   };
   $('bUndo').onclick = undo;
   $('bRedo').onclick = redo;
@@ -642,7 +527,8 @@
   $('groupName').addEventListener('input', save);
 
   window.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (!$('submit').hidden) { if (e.key === 'Escape') $('submit').hidden = true; return; }
     if (!$('view').hidden) {
       if (e.key === 'ArrowLeft') $('vPrev').onclick();
       else if (e.key === 'ArrowRight') $('vNext').onclick();
@@ -662,39 +548,8 @@
   });
 
   // ---------- 保存图片（2 倍清晰度，带小组名与时间） ----------
-  function exportPng(model) {
-    const s = buildStaticSvg(model);
-    s.setAttribute('width', W); s.setAttribute('height', H);
-    const style = document.createElementNS(NS, 'style');
-    style.textContent = `text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
-      .lbl{font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round}`;
-    s.insertBefore(style, s.firstChild);
-    const data = new XMLSerializer().serializeToString(s);
-    const img = new Image();
-    img.onload = () => {
-      const S = 2, top = 64;
-      const cv = document.createElement('canvas');
-      cv.width = W * S; cv.height = (H + top) * S;
-      const cx = cv.getContext('2d');
-      cx.scale(S, S);
-      cx.fillStyle = '#16324f'; cx.fillRect(0, 0, W, top);
-      cx.fillStyle = '#fff'; cx.font = 'bold 24px "Microsoft YaHei", sans-serif'; cx.textBaseline = 'middle';
-      cx.fillText('大气受热过程模型', 20, top / 2);
-      cx.font = '18px "Microsoft YaHei", sans-serif'; cx.textAlign = 'right';
-      const g = (model.name || '').trim();
-      const now = model.time ? new Date(model.time) : new Date();
-      const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      cx.fillText((g ? g + '　' : '') + ts, W - 20, top / 2);
-      cx.drawImage(img, 0, top, W, H);
-      const a = document.createElement('a');
-      a.download = `大气受热过程_${g || '模型'}_${ts.replace(/[: ]/g, '-')}.png`;
-      a.href = cv.toDataURL('image/png');
-      a.click();
-      toast('图片已保存');
-    };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data);
-  }
-  $('bShot').onclick = () => exportPng({ arrows, showCloud, name: $('groupName').value });
+  const savePng = m => exportPng(m).then(() => toast('图片已保存'), () => toast('图片保存失败'));
+  $('bShot').onclick = () => savePng({ arrows, showCloud, name: $('groupName').value });
 
   // ---------- 作品墙：各组作品存在这台机器的浏览器里，互相可见 ----------
   const WALL = 'atmos-heating-wall-v1';
@@ -711,13 +566,9 @@
   function updateWallBtn() {
     $('bWall').textContent = works.length ? `🖼 作品墙 ${works.length}` : '🖼 作品墙';
   }
-  function fmtTime(t) {
-    const d = new Date(t);
-    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  }
-
   $('bPin').onclick = () => {
     if (!arrows.length) { toast('画布上还没有箭头'); return; }
+    if (CLASS) { openSubmit(); return; }
     let name = $('groupName').value.trim();
     if (!name) {
       name = (prompt('请输入小组名称', '') || '').trim();
@@ -759,7 +610,10 @@
   }
   function openWall() { renderWall(); $('wall').hidden = false; }
   function closeWall() { $('wall').hidden = true; }
-  $('bWall').onclick = openWall;
+  $('bWall').onclick = () => {
+    if (CLASS) window.open('wall.html' + GeoScene.classHash(CLASS), 'geo-lab-wall');
+    else openWall();
+  };
   $('wClose').onclick = closeWall;
   $('wClear').onclick = () => {
     if (!works.length) return;
@@ -784,7 +638,7 @@
   $('vPrev').onclick = () => { if (viewIdx > 0) openView(viewIdx - 1); };
   $('vNext').onclick = () => { if (viewIdx < works.length - 1) openView(viewIdx + 1); };
   $('vClose').onclick = closeView;
-  $('vShot').onclick = () => exportPng(works[viewIdx]);
+  $('vShot').onclick = () => savePng(works[viewIdx]);
   $('vDel').onclick = () => {
     const w = works[viewIdx];
     if (!w || !confirm(`删除“${w.name}”的作品？`)) return;
@@ -802,7 +656,7 @@
     showCloud = w.showCloud !== false;
     $('groupName').value = w.name;
     $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
-    drawBase();
+    drawMainBase();
     commit(before); renderArrows();
     closeView(); closeWall();
     toast(`已载入“${w.name}”的作品，修改后可再次存入`);
@@ -815,12 +669,48 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
+  // ---------- 课堂模式：提交到老师的作品墙（GitHub 仓库里这节课的 issue） ----------
+  let lastNote = '';
+  function openSubmit() {
+    $('sName').value = $('groupName').value.trim();
+    $('sNote').value = lastNote;
+    $('sGo').disabled = false; $('sGo').textContent = '提交';
+    $('submit').hidden = false;
+    ($('sName').value ? $('sNote') : $('sName')).focus();
+  }
+  $('sCancel').onclick = () => { $('submit').hidden = true; };
+  $('sGo').onclick = async () => {
+    const name = $('sName').value.trim();
+    if (!name) { toast('请填写小组名称'); $('sName').focus(); return; }
+    $('groupName').value = name; save();
+    lastNote = $('sNote').value.trim();
+    $('sGo').disabled = true; $('sGo').textContent = '提交中…';
+    try {
+      await GeoScene.submitWork(CLASS, { name, note: lastNote, arrows, showCloud });
+      $('submit').hidden = true;
+      toast('提交成功！可以点“全班作品”看看其他组');
+    } catch (e) {
+      $('sGo').disabled = false; $('sGo').textContent = '重新提交';
+      toast('提交失败：' + (e.status ? e.message : '网络连接不上 GitHub，请稍后重试'));
+    }
+  };
+  function initClass() {
+    $('bPin').textContent = '📤 提交给老师';
+    $('bWall').textContent = '🖼 全班作品';
+    $('classBar').hidden = false;
+    $('classBar').textContent = '课堂模式';
+    $('toolTask').textContent = '小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“提交给老师”。允许出错。';
+    GeoScene.loadClass(CLASS).then(
+      d => { $('classBar').textContent = '课堂：' + d.title; },
+      e => { $('classBar').textContent = '课堂连接失败'; $('classBar').classList.add('bad'); toast(e.status ? e.message : '网络连接不上 GitHub'); });
+  }
+
   // ---------- 启动 ----------
   load();
   loadWorks();
-  updateWallBtn();
+  if (CLASS) initClass(); else updateWallBtn();
   $('bCloud').textContent = showCloud ? '☁️ 隐藏云层' : '☁️ 显示云层';
-  drawBase();
+  drawMainBase();
   buildLib();
   renderArrows();
 })();
