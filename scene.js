@@ -301,7 +301,6 @@
     const total = w.scores.reduce((t, v) => t + (+v || 0), 0);
     return send({ type: 'self', name: w.name, scores: w.scores, total, cloud: w.showCloud === false ? 0 : 1, a });
   }
-  const submitScore = (name, scores, total, remark) => send({ type: 'score', name, scores, total, remark: remark || '' });
   const startLesson = () => send({ type: 'lesson' });
 
   function workFromWire(o, time) {
@@ -334,7 +333,7 @@
       const start = lessons.length ? lessons[lessons.length - 1].time : 0;
       // 只留本节课的消息，本机留存不会越积越多
       events = events.filter(e => e.time >= start);
-      const works = new Map(), scores = new Map(), selfs = new Map();
+      const works = new Map(), selfs = new Map();
       for (const ev of events) {
         const o = ev.data;
         if (o.type === 'work') {
@@ -349,16 +348,13 @@
             return Number.isInteger(v) ? clamp(v, 0, r.max) : null;
           });
           selfs.set(w.name, { ...w, scores: sc, total: sc.reduce((t, v) => t + (v || 0), 0), self: true });
-        } else if (o.type === 'score') {
-          scores.set(o.name, { scores: o.scores || {}, total: +o.total || 0, remark: String(o.remark || ''), time: ev.time });
         }
       }
-      return (state = { start, hasLesson: lessons.length > 0, works, scores, selfs });
+      return (state = { start, hasLesson: lessons.length > 0, works, selfs });
     }
     return {
       add,
       get works() { return compute().works; },
-      get scores() { return compute().scores; },
       get selfs() { return compute().selfs; },
       get start() { return compute().start; },
       get hasLesson() { return compute().hasLesson; },
@@ -444,7 +440,7 @@
   window.GeoScene = {
     NS, W, H, LIB, CFG, W_MIN, W_MAX, SW, LW,
     el, clamp, aw, drawBase, drawArrowShape, labelSide, placeLabel, buildStaticSvg, exportPng, fmtTime,
-    submitWork, submitSelf, submitScore, startLesson, createClassState, subscribe, RUBRIC, RUBRIC_MAX, buildSelfSvg, wrap,
+    submitWork, submitSelf, startLesson, createClassState, subscribe, RUBRIC, RUBRIC_MAX, buildSelfSvg, wrap,
     testQuery: TEST_CH ? '&ch=' + TEST_CH : '',
   };
 })();

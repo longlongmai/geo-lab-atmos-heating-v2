@@ -79,7 +79,7 @@
   .badge small { font-size: .75rem; font-weight: 400; opacity: .85; }
   .badge.none { background: rgba(22, 50, 79, .55); font-size: .8rem; font-weight: 400; }
 
-  /* 放大查看 + 评分 */
+  /* 放大查看 */
   .view { position: fixed; inset: 0; z-index: 60; background: rgba(10, 25, 40, .96); display: flex; flex-direction: column; }
   .view header { background: #0d1c2c; margin-bottom: 10px; }
   .view .body { flex: 1; min-height: 0; display: flex; gap: 14px; padding: 0 14px 14px; }
@@ -92,23 +92,9 @@
   .side h3 { font-size: .95rem; color: var(--muted); font-weight: 600; }
   .side .note { font-size: 1rem; line-height: 1.6; white-space: pre-wrap; background: #f4f9fd; border-radius: 8px; padding: 10px 12px; }
   .side .note.emptyNote { color: var(--muted); font-size: .9rem; }
-  .crit { border-top: 1px solid var(--line); padding-top: 10px; }
-  .crit .t { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; color: var(--navy); }
-  .crit .t span { font-weight: 400; font-size: .85rem; color: var(--muted); }
-  .crit .hint { font-size: .8rem; color: var(--muted); margin: 2px 0 6px; line-height: 1.4; }
-  .pts { display: flex; gap: 6px; flex-wrap: wrap; }
-  .pts button {
     font: inherit; font-weight: 700; font-size: 1rem; width: 44px; height: 40px; border-radius: 8px;
     border: 1.5px solid var(--line); background: #fff; color: var(--navy); cursor: pointer;
   }
-  .pts button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .pts.ro button { cursor: default; }
-  .total { font-size: 1.6rem; font-weight: 700; color: var(--ok); }
-  .total small { font-size: .9rem; color: var(--muted); font-weight: 400; }
-  .side textarea { width: 100%; font: inherit; font-size: .95rem; padding: 8px 10px; border-radius: 8px; border: 1.5px solid var(--line); height: 70px; resize: vertical; }
-  .side .save { font: inherit; font-weight: 700; font-size: 1rem; padding: 10px; border-radius: 8px; border: 0; background: var(--ok); color: #fff; cursor: pointer; }
-  .side .save:disabled { opacity: .5; cursor: default; }
-  .side .remark { font-size: .95rem; line-height: 1.5; }
   .rounds { display: flex; gap: 4px; background: rgba(255,255,255,.12); padding: 3px; border-radius: 10px; }
   .rounds button { font: inherit; font-size: .9rem; font-weight: 600; border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; background: transparent; color: #fff; }
   .rounds button.on { background: #fff; color: var(--navy); }
@@ -118,9 +104,6 @@
   .selfTbl td { border-top: 1px solid var(--line); padding: 6px 4px; vertical-align: top; line-height: 1.45; }
   .selfTbl td.v { font-weight: 700; color: var(--navy); white-space: nowrap; text-align: right; }
   .selfTbl td small { color: var(--muted); display: block; }
-  .crit .cmp { font-size: .8rem; color: var(--muted); margin-top: 4px; }
-  .crit .cmp b { color: var(--accent); }
-  .crit .lvl { font-size: .8rem; color: var(--ink); background: #fff6d6; border-radius: 6px; padding: 4px 8px; margin-top: 6px; line-height: 1.45; }
   .nav {
     position: absolute; top: 50%; transform: translateY(-50%); width: 54px; height: 54px; border-radius: 50%;
     border: 0; background: rgba(255,255,255,.92); color: var(--navy); font-size: 1.8rem; line-height: 1; cursor: pointer; z-index: 2;
@@ -164,7 +147,7 @@
     <select id="sort" title="排序">
       <option value="time">按提交时间</option>
       <option value="name">按小组名称</option>
-      <option value="score">按得分</option>
+      <option value="score">按自评分</option>
     </select>
     <button id="bNew">🆕 新开一节课</button>
     <button id="bFull">⛶ 全屏</button>
@@ -260,15 +243,13 @@
   // ---------- 作品墙 ----------
   let order = [];
   let viewName = null;
-  let draft = null;
   const seen = new Map();     // 小组名 → 已显示过的提交时间，用于高亮新提交
   let loadedOnce = false;     // 已有消息补收完之前不高亮
 
   function sortNames() {
     const by = $('sort').value;
     const names = [...state.works.keys()];
-    // 有教师评分按教师分，否则按自评分
-    const sc = n => (state.scores.get(n) || state.selfs.get(n) || { total: -1 }).total;
+    const sc = n => (state.selfs.get(n) || { total: -1 }).total;
     const byName = (a, b) => a.localeCompare(b, 'zh-CN', { numeric: true });
     if (by === 'name') names.sort(byName);
     else if (by === 'score') names.sort((a, b) => sc(b) - sc(a) || byName(a, b));
@@ -278,9 +259,9 @@
 
   function render() {
     const n = state.works.size, keys = [...state.works.keys()];
-    const scored = keys.filter(k => state.scores.has(k)).length, selfed = keys.filter(k => state.selfs.has(k)).length;
+    const selfed = keys.filter(k => state.selfs.has(k)).length;
     const since = state.hasLesson ? `本节课 ${fmtTime(state.start).slice(6)} 开始 · ` : '';
-    $('meta').textContent = since + `第一轮已提交 ${n} 组` + (n ? ` · 已自评 ${selfed} 组 · 教师已评 ${scored} 组` : '');
+    $('meta').textContent = since + `第一轮已提交 ${n} 组` + (n ? ` · 已自评 ${selfed} 组` : '');
     order = sortNames();
     const grid = $('grid');
     grid.innerHTML = '';
@@ -297,7 +278,7 @@
       grid.appendChild(empty);
     }
     order.forEach(name => {
-      const w = state.works.get(name), s = state.scores.get(name), me = state.selfs.get(name);
+      const w = state.works.get(name), me = state.selfs.get(name);
       const card = document.createElement('div');
       card.className = 'card';
       const stamp = w.time + '|' + (me ? me.time : 0);
@@ -329,8 +310,8 @@
       cap.querySelector('span').textContent = `${w.arrows.length} 支箭头` + (w.versions > 1 ? ` · 第 ${w.versions} 次提交` : '');
       cap.querySelector('small').textContent = fmtTime(me && me.time > w.time ? me.time : w.time);
       const badge = document.createElement('span');
-      badge.className = 'badge' + (s ? '' : ' none');
-      badge.innerHTML = s ? `教师 ${s.total}<small> / ${MAX}</small>` : '教师待评';
+      badge.className = 'badge' + (me ? '' : ' none');
+      badge.innerHTML = me ? `自评 ${me.total}<small> / ${MAX}</small>` : '待自评';
       cap.appendChild(badge);
       card.appendChild(cap);
       const note = document.createElement('div');
@@ -344,14 +325,13 @@
   }
   $('sort').onchange = render;
 
-  // ---------- 放大查看 + 评分 ----------
+  // ---------- 放大查看 ----------
   let viewRound = 1;
   function openView(name, rnd, refreshing) {
     const w = state.works.get(name);
     if (!w) { closeView(); return; }
     const me = state.selfs.get(name);
     if (rnd === 2 && !me) rnd = 1;
-    const changedGroup = name !== viewName;
     viewName = name; viewRound = rnd || 1;
     const i = order.indexOf(name);
     $('vName').textContent = name;
@@ -369,20 +349,19 @@
     big.appendChild(viewRound === 2 ? buildSelfSvg(me) : buildStaticSvg(w));
     $('vPrev').disabled = i <= 0;
     $('vNext').disabled = i >= order.length - 1;
-    // 老师正在打分时，新消息到达不打断输入
-    if (!(refreshing && TEACHER && draft && !changedGroup)) renderSide(name);
+    renderSide(name);
     $('view').hidden = false;
   }
-  function closeView() { $('view').hidden = true; viewName = null; draft = null; }
+  function closeView() { $('view').hidden = true; viewName = null; }
   $('vR1').onclick = () => viewName && openView(viewName, 1, true);
   $('vR2').onclick = () => viewName && openView(viewName, 2, true);
   $('vWide').onclick = () => {
     const on = $('view').classList.toggle('wide');
-    $('vWide').textContent = on ? '📋 显示评分栏' : '🔍 只看图';
+    $('vWide').textContent = on ? '📋 显示侧栏' : '🔍 只看图';
   };
 
   function renderSide(name) {
-    const w = state.works.get(name), s = state.scores.get(name);
+    const w = state.works.get(name);
     const side = $('vSide');
     side.innerHTML = '';
     const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; side.appendChild(e); return e; };
@@ -403,74 +382,9 @@
         tbl.appendChild(tr);
       });
     }
-
-    const cur = TEACHER ? (draft = { scores: { ...(s ? s.scores : {}) }, remark: s ? s.remark : '' }) : null;
-    h('h3', '', TEACHER ? '教师评分' : '老师评分');
-    if (!TEACHER && !s) { h('div', 'note emptyNote', '老师还没有给这一组打分'); return; }
-    const src = () => (TEACHER ? cur.scores : s.scores);
-    const totalEl = document.createElement('div');
-    const updateTotal = () => {
-      const sum = RUBRIC.reduce((t, r) => t + (+src()[r.name] || 0), 0);
-      totalEl.innerHTML = `${sum}<small> / ${MAX} 分</small>`;
-      return sum;
-    };
-    RUBRIC.forEach((r, k) => {
-      const box = h('div', 'crit');
-      box.innerHTML = `<div class="t"></div><div class="hint"></div><div class="pts${TEACHER ? '' : ' ro'}"></div><div class="lvl" hidden></div><div class="cmp"></div>`;
-      box.querySelector('.t').textContent = r.name;
-      box.querySelector('.t').insertAdjacentHTML('beforeend', `<span>满分 ${r.max}</span>`);
-      box.querySelector('.hint').textContent = '满分标准：' + r.levels[r.max];
-      if (me && me.scores[k] != null) box.querySelector('.cmp').innerHTML = `学生自评 <b>${me.scores[k]}</b> 分`;
-      const lvl = box.querySelector('.lvl');
-      const showLvl = v => { lvl.hidden = v == null; if (v != null) lvl.textContent = `${v} 分：${r.levels[v]}`; };
-      showLvl(src()[r.name]);
-      const pts = box.querySelector('.pts');
-      for (let v = 0; v <= r.max; v++) {
-        const b = document.createElement('button');
-        b.textContent = v;
-        if (src()[r.name] === v) b.classList.add('on');
-        if (TEACHER) b.onclick = () => {
-          cur.scores[r.name] = v;
-          pts.querySelectorAll('button').forEach(x => x.classList.toggle('on', +x.textContent === v));
-          showLvl(v);
-          updateTotal();
-        };
-        pts.appendChild(b);
-      }
-    });
-    totalEl.className = 'total';
-    side.appendChild(totalEl);
-    updateTotal();
-    if (TEACHER) {
-      const ta = document.createElement('textarea');
-      ta.placeholder = '点评（选填，学生在“全班作品”里能看到）';
-      ta.value = cur.remark;
-      ta.oninput = () => { cur.remark = ta.value; };
-      side.appendChild(ta);
-      const btn = document.createElement('button');
-      btn.className = 'save';
-      btn.textContent = s ? '更新评分' : '保存评分';
-      btn.onclick = async () => {
-        const missing = RUBRIC.filter(r => cur.scores[r.name] == null).map(r => r.name);
-        if (missing.length) { toast('还没打分：' + missing.join('、')); return; }
-        btn.disabled = true; btn.textContent = '保存中…';
-        try {
-          await GeoScene.submitScore(name, cur.scores, updateTotal(), cur.remark.trim());
-          toast(`已保存：${name} ${updateTotal()} 分`);
-          draft = null;   // 评分消息很快会推送回来，届时刷新右侧面板
-        } catch (e) {
-          btn.disabled = false; btn.textContent = '重新保存';
-          toast(e.message);
-        }
-      };
-      side.appendChild(btn);
-    } else if (s.remark) {
-      h('h3', '', '老师点评');
-      h('div', 'remark', s.remark);
-    }
   }
 
-  const step = d => { const i = order.indexOf(viewName) + d; if (order[i]) { draft = null; openView(order[i], viewRound); } };
+  const step = d => { const i = order.indexOf(viewName) + d; if (order[i]) openView(order[i], viewRound); };
   $('vPrev').onclick = () => step(-1);
   $('vNext').onclick = () => step(1);
   $('vClose').onclick = closeView;
@@ -504,7 +418,6 @@
     else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
   };
   window.addEventListener('keydown', e => {
-    if (e.target.tagName === 'TEXTAREA') return;
     if (!$('linkbox').hidden) { if (e.key === 'Escape') $('linkbox').hidden = true; return; }
     if ($('view').hidden) return;
     if (e.key === 'ArrowLeft') step(-1);
