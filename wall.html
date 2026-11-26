@@ -86,7 +86,7 @@
   .view .big { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
   .view .big svg { width: 100%; max-height: 100%; display: block; border-radius: 10px; }
   .view .side {
-    width: 420px; flex-shrink: 0; background: #fff; border-radius: 12px; padding: 16px; overflow: auto;
+    width: 500px; flex-shrink: 0; background: #fff; border-radius: 12px; padding: 16px; overflow: auto;
     display: flex; flex-direction: column; gap: 12px;
   }
   .side h3 { font-size: .95rem; color: var(--muted); font-weight: 600; }
@@ -100,18 +100,21 @@
   .rounds button.on { background: #fff; color: var(--navy); }
   .rounds button:disabled { opacity: .4; cursor: default; }
   .view.wide .side { display: none; }
-  /* 完整评分细则：每个维度列出各档标准，高亮学生选的一档 */
-  .dimBox { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
-  .dimHead { display: flex; align-items: baseline; gap: 8px; background: #f4f9fd; padding: 8px 10px; }
-  .dimHead b { color: var(--navy); font-size: .95rem; flex: 1; }
-  .dimHead span { font-size: .85rem; color: var(--muted); white-space: nowrap; }
-  .dimHead span em { font-style: normal; font-weight: 700; font-size: 1.1rem; color: var(--accent); }
-  .lvRow { display: flex; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: .85rem; line-height: 1.5; color: var(--muted); }
-  .lvRow .p { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line);
-    display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--navy); background: #fff; }
-  .lvRow.on { background: #fff6d6; color: var(--ink); font-weight: 600; }
-  .lvRow.on .p { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .lvRow .mine { margin-left: auto; flex-shrink: 0; align-self: center; font-size: .75rem; color: #fff; background: var(--accent); border-radius: 10px; padding: 1px 7px; font-weight: 600; }
+  /* 评分细则表：与学生自评时看到的表格一致，高亮学生选的一档 */
+  .rubric { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+  .rubric table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  .rubric th { background: var(--navy); color: #fff; font-weight: 600; padding: 7px 8px; text-align: left; }
+  .rubric td { border-top: 1px solid var(--line); padding: 7px 8px; vertical-align: middle; line-height: 1.45; }
+  .rubric td.dim { font-weight: 700; color: var(--navy); background: #f4f9fd; width: 7em; }
+  .rubric td.dim small { display: block; font-weight: 400; color: var(--muted); margin-top: 4px; }
+  .rubric td.dim small b { color: var(--accent); font-size: 1rem; }
+  .rubric td.pt { width: 3.6em; text-align: center; white-space: nowrap; }
+  .rubric td.pt span {
+    display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid var(--line); font-weight: 700; color: var(--navy); background: #fff;
+  }
+  .rubric tr.on td.lvc { background: #fff6d6; }
+  .rubric tr.on td.pt span { background: var(--accent); border-color: var(--accent); color: #fff; }
   .nav {
     position: absolute; top: 50%; transform: translateY(-50%); width: 54px; height: 54px; border-radius: 50%;
     border: 0; background: rgba(255,255,255,.92); color: var(--navy); font-size: 1.8rem; line-height: 1; cursor: pointer; z-index: 2;
@@ -379,23 +382,31 @@
     const me = state.selfs.get(name);
     h('h3', '', me ? `学生自评：${me.total} / ${MAX} 分` : '学生自评');
     if (!me) h('div', 'note emptyNote', '这一组还没有提交自评（第二轮），下面是评分细则');
-    // 完整评分细则：每个维度从高分到低分列出各档标准，学生选的一档高亮
+    // 评分细则表（与学生自评时的表格相同）：学生选的一档高亮
+    const wrapBox = h('div', 'rubric');
+    const tb = document.createElement('table');
+    tb.innerHTML = '<thead><tr><th>评价维度</th><th style="text-align:center">分值</th><th>自评细则</th></tr></thead>';
+    const body = document.createElement('tbody');
     RUBRIC.forEach((r, k) => {
       const v = me ? me.scores[k] : null;
-      const box = h('div', 'dimBox');
-      const head = document.createElement('div');
-      head.className = 'dimHead';
-      head.innerHTML = `<b></b><span>${me ? `自评 <em>${v ?? '—'}</em> / ${r.max} 分` : `满分 ${r.max} 分`}</span>`;
-      head.querySelector('b').textContent = `${k + 1}. ${r.name}`;
-      box.appendChild(head);
       for (let lv = r.max; lv >= 0; lv--) {
-        const row = document.createElement('div');
-        row.className = 'lvRow' + (v === lv ? ' on' : '');
-        row.innerHTML = `<span class="p">${lv}</span><span class="t"></span>` + (v === lv ? '<span class="mine">学生选择</span>' : '');
-        row.querySelector('.t').textContent = r.levels[lv];
-        box.appendChild(row);
+        const tr = document.createElement('tr');
+        if (v === lv) tr.className = 'on';
+        if (lv === r.max) {
+          const td = document.createElement('td');
+          td.className = 'dim'; td.rowSpan = r.max + 1;
+          td.innerHTML = `${k + 1}. <span></span><small>满分 ${r.max} 分</small>` +
+            (me ? `<small>自评 <b>${v ?? '—'}</b> 分</small>` : '');
+          td.querySelector('span').textContent = r.name;
+          tr.appendChild(td);
+        }
+        tr.insertAdjacentHTML('beforeend', `<td class="pt lvc"><span>${lv}</span></td><td class="lvc"></td>`);
+        tr.lastChild.textContent = r.levels[lv];
+        body.appendChild(tr);
       }
     });
+    tb.appendChild(body);
+    wrapBox.appendChild(tb);
   }
 
   const step = d => { const i = order.indexOf(viewName) + d; if (order[i]) openView(order[i], viewRound); };
