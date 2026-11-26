@@ -86,7 +86,7 @@
   .view .big { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
   .view .big svg { width: 100%; max-height: 100%; display: block; border-radius: 10px; }
   .view .side {
-    width: 340px; flex-shrink: 0; background: #fff; border-radius: 12px; padding: 16px; overflow: auto;
+    width: 420px; flex-shrink: 0; background: #fff; border-radius: 12px; padding: 16px; overflow: auto;
     display: flex; flex-direction: column; gap: 12px;
   }
   .side h3 { font-size: .95rem; color: var(--muted); font-weight: 600; }
@@ -100,10 +100,18 @@
   .rounds button.on { background: #fff; color: var(--navy); }
   .rounds button:disabled { opacity: .4; cursor: default; }
   .view.wide .side { display: none; }
-  .selfTbl { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  .selfTbl td { border-top: 1px solid var(--line); padding: 6px 4px; vertical-align: top; line-height: 1.45; }
-  .selfTbl td.v { font-weight: 700; color: var(--navy); white-space: nowrap; text-align: right; }
-  .selfTbl td small { color: var(--muted); display: block; }
+  /* 完整评分细则：每个维度列出各档标准，高亮学生选的一档 */
+  .dimBox { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+  .dimHead { display: flex; align-items: baseline; gap: 8px; background: #f4f9fd; padding: 8px 10px; }
+  .dimHead b { color: var(--navy); font-size: .95rem; flex: 1; }
+  .dimHead span { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+  .dimHead span em { font-style: normal; font-weight: 700; font-size: 1.1rem; color: var(--accent); }
+  .lvRow { display: flex; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: .85rem; line-height: 1.5; color: var(--muted); }
+  .lvRow .p { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--navy); background: #fff; }
+  .lvRow.on { background: #fff6d6; color: var(--ink); font-weight: 600; }
+  .lvRow.on .p { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .lvRow .mine { margin-left: auto; flex-shrink: 0; align-self: center; font-size: .75rem; color: #fff; background: var(--accent); border-radius: 10px; padding: 1px 7px; font-weight: 600; }
   .nav {
     position: absolute; top: 50%; transform: translateY(-50%); width: 54px; height: 54px; border-radius: 50%;
     border: 0; background: rgba(255,255,255,.92); color: var(--navy); font-size: 1.8rem; line-height: 1; cursor: pointer; z-index: 2;
@@ -370,18 +378,24 @@
 
     const me = state.selfs.get(name);
     h('h3', '', me ? `学生自评：${me.total} / ${MAX} 分` : '学生自评');
-    if (!me) h('div', 'note emptyNote', '这一组还没有提交自评（第二轮）');
-    else {
-      const tbl = h('table', 'selfTbl');
-      RUBRIC.forEach((r, k) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td><span></span><small></small></td><td class="v"></td>';
-        tr.querySelector('span').textContent = r.name;
-        tr.querySelector('small').textContent = me.scores[k] == null ? '（未评）' : r.levels[me.scores[k]];
-        tr.querySelector('.v').textContent = `${me.scores[k] ?? '—'} / ${r.max}`;
-        tbl.appendChild(tr);
-      });
-    }
+    if (!me) h('div', 'note emptyNote', '这一组还没有提交自评（第二轮），下面是评分细则');
+    // 完整评分细则：每个维度从高分到低分列出各档标准，学生选的一档高亮
+    RUBRIC.forEach((r, k) => {
+      const v = me ? me.scores[k] : null;
+      const box = h('div', 'dimBox');
+      const head = document.createElement('div');
+      head.className = 'dimHead';
+      head.innerHTML = `<b></b><span>${me ? `自评 <em>${v ?? '—'}</em> / ${r.max} 分` : `满分 ${r.max} 分`}</span>`;
+      head.querySelector('b').textContent = `${k + 1}. ${r.name}`;
+      box.appendChild(head);
+      for (let lv = r.max; lv >= 0; lv--) {
+        const row = document.createElement('div');
+        row.className = 'lvRow' + (v === lv ? ' on' : '');
+        row.innerHTML = `<span class="p">${lv}</span><span class="t"></span>` + (v === lv ? '<span class="mine">学生选择</span>' : '');
+        row.querySelector('.t').textContent = r.levels[lv];
+        box.appendChild(row);
+      }
+    });
   }
 
   const step = d => { const i = order.indexOf(viewName) + d; if (order[i]) openView(order[i], viewRound); };
