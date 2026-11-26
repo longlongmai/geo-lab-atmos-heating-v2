@@ -127,7 +127,42 @@
   .modal .row button.primary { background: var(--accent); color: #fff; }
   .modal .row button:disabled { opacity: .5; cursor: default; }
 
+  /* 第二轮：自评表 */
+  .modal .box.wide { width: min(1080px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; padding: 16px 18px; }
+  .selfBody { display: flex; gap: 16px; min-height: 0; flex: 1; }
+  .selfPic { width: 38%; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+  .selfPic svg { width: 100%; border-radius: 8px; display: block; border: 1px solid var(--line); }
+  .selfPic small { font-size: .8rem; color: var(--muted); line-height: 1.5; }
+  .rubric { flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .rubric table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .rubric th { position: sticky; top: 0; background: var(--navy); color: #fff; font-weight: 600; padding: 7px 8px; text-align: left; z-index: 1; }
+  .rubric td { border-top: 1px solid var(--line); padding: 7px 8px; vertical-align: middle; line-height: 1.45; }
+  .rubric td.dim { font-weight: 700; color: var(--navy); background: #f4f9fd; width: 7.5em; }
+  .rubric td.dim small { display: block; font-weight: 400; color: var(--muted); margin-top: 4px; }
+  .rubric tr.lv { cursor: pointer; }
+  .rubric tr.lv:hover td.lvc { background: #eef7fd; }
+  .rubric td.pt { width: 4.2em; text-align: center; white-space: nowrap; }
+  .rubric td.pt span {
+    display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid var(--line); font-weight: 700; color: var(--navy); background: #fff;
+  }
+  .rubric tr.lv.on td.lvc { background: #fff6d6; }
+  .rubric tr.lv.on td.pt span { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rubric tr.miss td.dim { box-shadow: inset 4px 0 0 #c0473f; }
+  .selfFoot { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .selfFoot .sum { font-size: 1.05rem; color: var(--muted); margin-right: auto; }
+  .selfFoot .sum b { font-size: 1.6rem; color: var(--ok); }
+  .selfFoot .sum small { font-size: .85rem; }
+  .selfFoot button { font: inherit; font-size: .95rem; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; background: #e3f1fb; color: var(--navy); }
+  .selfFoot button.primary { background: var(--accent); color: #fff; }
+  .selfFoot button:disabled { opacity: .5; cursor: default; }
+  header .tools button.todo { background: #ffd666; color: var(--navy); }
+  header .tools button[hidden] { display: none; }
+
   @media (max-width: 860px) {
+    .selfBody { flex-direction: column; overflow: auto; }
+    .selfPic { width: 100%; }
+    .rubric { overflow: visible; }
     main { flex-direction: column; }
     aside { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 42vh; }
     .lib { flex-direction: row; flex-wrap: wrap; }
@@ -140,7 +175,7 @@
 
 <header>
   <h1>大气受热过程 · 小组拖拽建模</h1>
-  <div class="task" id="toolTask">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“提交给老师”。允许出错。</div>
+  <div class="task" id="toolTask">小组任务：把右侧辐射箭头拖到图中合适位置，拖动箭头两端调整方向和长短，拖动侧边方块调整粗细，搭建大气受热过程模型，完成后点“提交给老师”，再对照弹出的评分细则自评打分、第二次提交。允许出错。</div>
   <div class="tools">
     <button id="bCloud">☁️ 隐藏云层</button>
     <span class="sep"></span>
@@ -151,6 +186,7 @@
     <span class="sep"></span>
     <button id="bShot">📸 保存图片</button>
     <button id="bPin" class="on">📤 提交给老师</button>
+    <button id="bSelf" hidden>📝 自评打分</button>
     <button id="bWall">🖼 全班作品</button>
     <button id="bFull">⛶ 全屏</button>
   </div>
@@ -183,7 +219,7 @@
 <div class="modal" id="submit" hidden>
   <div class="box">
     <h3>📤 提交给老师</h3>
-    <p>提交后，作品会出现在老师的作品墙上，全班都能看到。可以修改后再次提交，以最后一次为准。</p>
+    <p>这是第一轮提交（原始作品）。提交后会弹出评分细则，请对照原图逐项自评打分，再进行第二轮提交。作品会出现在老师的作品墙上，全班都能看到。</p>
     <label for="sName">小组名称</label>
     <input id="sName" maxlength="20" placeholder="例如：第 3 组">
     <label for="sNote">我们的说明（选填）：模型想表达什么？哪支箭头最关键？</label>
@@ -191,6 +227,23 @@
     <div class="row">
       <button id="sCancel">取消</button>
       <button id="sGo" class="primary">提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- 第二轮：对照评分细则自评 -->
+<div class="modal" id="self" hidden>
+  <div class="box wide">
+    <h3>📝 第二轮：对照评分细则自评打分</h3>
+    <p>第一轮已提交。请对照左边的原图，在每个维度中点选符合的一项，打完分后提交，老师会同时看到你们的原图和自评。</p>
+    <div class="selfBody">
+      <div class="selfPic" id="selfPic"></div>
+      <div class="rubric"><table id="selfTable"></table></div>
+    </div>
+    <div class="selfFoot">
+      <span class="sum" id="selfSum"></span>
+      <button id="selfLater">稍后再评</button>
+      <button id="selfGo" class="primary">提交自评（第二轮）</button>
     </div>
   </div>
 </div>
@@ -450,6 +503,7 @@
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (!$('submit').hidden) { if (e.key === 'Escape') $('submit').hidden = true; return; }
+    if (!$('self').hidden) { if (e.key === 'Escape') $('selfLater').onclick(); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) { e.preventDefault(); $('bDel').onclick(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
@@ -473,6 +527,85 @@
   }
 
   // ---------- 提交给老师：作品经中转服务实时出现在老师的作品墙上 ----------
+  // 第一轮：提交原始作品；成功后自动弹出评分细则，学生自评后进行第二轮提交（自评分 + 原图）
+  const ROUND = 'atmos-heating-rounds-v1';
+  let round = null;   // { name, arrows, showCloud, time, selfScores, selfDone }
+  try { round = JSON.parse(localStorage.getItem(ROUND) || 'null'); } catch (e) {}
+  const saveRound = () => { try { localStorage.setItem(ROUND, JSON.stringify(round)); } catch (e) {} };
+  function updateSelfBtn() {
+    const b = $('bSelf');
+    b.hidden = !round;
+    if (round) {
+      b.classList.toggle('todo', !round.selfDone);
+      b.textContent = round.selfDone ? '📝 修改自评' : '📝 自评打分（待提交）';
+    }
+  }
+
+  const RUBRIC = GeoScene.RUBRIC;
+  let selfDraft = [];
+  function openSelf() {
+    if (!round) return;
+    selfDraft = RUBRIC.map((r, i) => (round.selfScores && Number.isInteger(round.selfScores[i]) ? round.selfScores[i] : null));
+    const pic = $('selfPic');
+    pic.innerHTML = '';
+    pic.appendChild(GeoScene.buildStaticSvg(round));
+    const cap = document.createElement('small');
+    cap.textContent = `${round.name} · 第一轮提交于 ${GeoScene.fmtTime(round.time)}。自评针对这张原图；如果想改图，请关掉此窗口，改好后重新“提交给老师”。`;
+    pic.appendChild(cap);
+    const tb = $('selfTable');
+    tb.innerHTML = '<thead><tr><th>评价维度</th><th style="text-align:center">分值</th><th>自评细则（点选符合的一项）</th></tr></thead>';
+    const body = document.createElement('tbody');
+    RUBRIC.forEach((r, i) => {
+      for (let v = r.max; v >= 0; v--) {
+        const tr = document.createElement('tr');
+        tr.className = 'lv';
+        tr.dataset.dim = i; tr.dataset.v = v;
+        if (v === r.max) {
+          const td = document.createElement('td');
+          td.className = 'dim'; td.rowSpan = r.max + 1;
+          td.innerHTML = `${i + 1}. <span></span><small>满分 ${r.max} 分</small>`;
+          td.querySelector('span').textContent = r.name;
+          tr.appendChild(td);
+        }
+        tr.insertAdjacentHTML('beforeend', `<td class="pt lvc"><span>${v}</span></td><td class="lvc"></td>`);
+        tr.lastChild.textContent = r.levels[v];
+        tr.onclick = () => { selfDraft[i] = v; paintSelf(); };
+        body.appendChild(tr);
+      }
+    });
+    tb.appendChild(body);
+    paintSelf();
+    $('selfGo').disabled = false;
+    $('selfGo').textContent = round.selfDone ? '重新提交自评' : '提交自评（第二轮）';
+    $('self').hidden = false;
+  }
+  function paintSelf(markMissing) {
+    $('selfTable').querySelectorAll('tr.lv').forEach(tr => {
+      const i = +tr.dataset.dim, v = +tr.dataset.v;
+      tr.classList.toggle('on', selfDraft[i] === v);
+      tr.classList.toggle('miss', !!markMissing && selfDraft[i] == null);
+    });
+    const done = selfDraft.filter(v => v != null).length;
+    const sum = selfDraft.reduce((t, v) => t + (v || 0), 0);
+    $('selfSum').innerHTML = `自评总分 <b>${sum}</b> / ${GeoScene.RUBRIC_MAX}　<small>已评 ${done} / ${RUBRIC.length} 项</small>`;
+  }
+  $('bSelf').onclick = openSelf;
+  $('selfLater').onclick = () => { $('self').hidden = true; toast('记得完成自评：点上方“📝 自评打分”'); };
+  $('selfGo').onclick = async () => {
+    const missing = RUBRIC.filter((r, i) => selfDraft[i] == null).map(r => r.name);
+    if (missing.length) { paintSelf(true); toast('还没打分：' + missing.join('、')); return; }
+    $('selfGo').disabled = true; $('selfGo').textContent = '提交中…';
+    try {
+      await GeoScene.submitSelf({ name: round.name, scores: selfDraft.slice(), arrows: round.arrows, showCloud: round.showCloud });
+      round.selfScores = selfDraft.slice(); round.selfDone = true; saveRound(); updateSelfBtn();
+      $('self').hidden = true;
+      toast('第二轮提交成功！老师能看到你们的原图和自评了');
+    } catch (e) {
+      $('selfGo').disabled = false; $('selfGo').textContent = '重新提交自评';
+      toast(e.message);
+    }
+  };
+
   let lastNote = '';
   $('bPin').onclick = () => {
     if (!arrows.length) { toast('画布上还没有箭头'); return; }
@@ -492,7 +625,10 @@
     try {
       await GeoScene.submitWork({ name, note: lastNote, arrows, showCloud });
       $('submit').hidden = true;
-      toast('提交成功！老师的作品墙上已经能看到了');
+      round = { name, arrows: JSON.parse(JSON.stringify(arrows)), showCloud, time: Date.now(), selfScores: null, selfDone: false };
+      saveRound(); updateSelfBtn();
+      toast('第一轮提交成功！请对照评分细则自评');
+      openSelf();
     } catch (e) {
       $('sGo').disabled = false; $('sGo').textContent = '重新提交';
       toast(e.message);
@@ -506,6 +642,7 @@
   drawMainBase();
   buildLib();
   renderArrows();
+  updateSelfBtn();
 })();
 </script>
 </body>

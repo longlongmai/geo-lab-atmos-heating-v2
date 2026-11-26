@@ -1,5 +1,5 @@
 // 大气受热过程：底图与箭头绘制、导出图片、课堂提交接口
-// 学生页（index.html）、作品墙（wall.html）、老师开课页（teacher.html）共用
+// 学生页（index.html）、作品墙（wall.html）共用
 (function () {
   const NS = 'http://www.w3.org/2000/svg';
   const W = 1000, H = 625;
@@ -168,15 +168,73 @@
     return s;
   }
 
+  // ---------- 第二轮：作品 + 自评表 合成一张图 ----------
+  // 按字数折行（中文按 1 个字宽，字母数字按半个字宽）
+  function wrap(text, maxEm) {
+    const lines = [];
+    let cur = '', n = 0;
+    for (const ch of String(text)) {
+      const w = /[\x00-\x7f]/.test(ch) ? 0.55 : 1;
+      // 标点不放行首：宽度超出一点也留在上一行
+      if (n + w > maxEm && cur && !/[，。；：、）》”！？,.;:)]/.test(ch)) { lines.push(cur); cur = ''; n = 0; }
+      cur += ch; n += w;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+  function buildSelfSvg(self) {
+    const p = `s${++uid}-`;
+    const COLW = W / RUBRIC.length, PADX = 14, TOP = 56;
+    const cols = RUBRIC.map((r, i) => {
+      const v = self.scores[i];
+      return {
+        r, v,
+        title: wrap(r.name, (COLW - PADX * 2) / 18),
+        desc: wrap(v == null ? '（未评）' : r.levels[v], (COLW - PADX * 2) / 15),
+      };
+    });
+    const colH = Math.max(...cols.map(c => c.title.length * 23 + 52 + c.desc.length * 21));
+    const PH = TOP + colH + 22;
+    const s = el('svg', { viewBox: `0 0 ${W} ${H + PH}`, preserveAspectRatio: 'xMidYMid meet' });
+    const pic = buildStaticSvg(self);
+    pic.setAttribute('width', W); pic.setAttribute('height', H);
+    s.appendChild(pic);
+    const g = el('g', { transform: `translate(0 ${H})` }, s);
+    el('rect', { x: 0, y: 0, width: W, height: PH, fill: '#fff' }, g);
+    el('rect', { x: 0, y: 0, width: W, height: TOP - 10, fill: '#16324f' }, g);
+    const t = (x, y, text, size, fill, weight, anchor = 'start') => {
+      const e = el('text', { x, y, 'font-size': size, fill, 'font-weight': weight || 400, 'text-anchor': anchor }, g);
+      e.textContent = text;
+      return e;
+    };
+    t(PADX + 6, 31, '学生自评', 22, '#fff', 700);
+    t(W - PADX - 6, 32, `自评总分  ${self.total} / ${RUBRIC_MAX}`, 22, '#ffd666', 700, 'end');
+    cols.forEach((c, i) => {
+      const x = i * COLW;
+      if (i) el('line', { x1: x, y1: TOP, x2: x, y2: PH - 12, stroke: '#cfe0ee', 'stroke-width': 1.5 }, g);
+      let y = TOP + 20;
+      c.title.forEach(l => { t(x + PADX, y, l, 18, '#16324f', 700); y += 23; });
+      y += 14;
+      const full = c.v === c.r.max;
+      t(x + PADX, y, c.v == null ? '—' : String(c.v), 34, full ? '#2e9b57' : '#c0473f', 700);
+      t(x + PADX + (c.v == null ? 26 : 24), y, `/ ${c.r.max} 分`, 16, '#5b6b7c');
+      y += 26;
+      c.desc.forEach(l => { t(x + PADX, y, l, 15, '#1e2b3a'); y += 21; });
+    });
+    return s;
+  }
+
   const pad = n => String(n).padStart(2, '0');
   const fmtTime = t => { const d = new Date(t); return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
   // ---------- 保存图片（2 倍清晰度，带小组名与时间） ----------
+  // model.self 为真时导出“作品 + 自评表”合成图
   function exportPng(model) {
     return new Promise((resolve, reject) => {
-      const s = buildStaticSvg(model);
+      const s = model.self ? buildSelfSvg(model) : buildStaticSvg(model);
+      const IH = +s.getAttribute('viewBox').split(' ')[3];
       s.setAttribute('xmlns', NS);
-      s.setAttribute('width', W); s.setAttribute('height', H);
+      s.setAttribute('width', W); s.setAttribute('height', IH);
       const style = document.createElementNS(NS, 'style');
       style.textContent = `text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}${LBL_CSS}`;
       s.insertBefore(style, s.firstChild);
@@ -185,20 +243,20 @@
       img.onload = () => {
         const S = 2, top = 64;
         const cv = document.createElement('canvas');
-        cv.width = W * S; cv.height = (H + top) * S;
+        cv.width = W * S; cv.height = (IH + top) * S;
         const cx = cv.getContext('2d');
         cx.scale(S, S);
         cx.fillStyle = '#16324f'; cx.fillRect(0, 0, W, top);
         cx.fillStyle = '#fff'; cx.font = 'bold 24px "Microsoft YaHei", sans-serif'; cx.textBaseline = 'middle';
-        cx.fillText('大气受热过程模型', 20, top / 2);
+        cx.fillText(model.self ? '大气受热过程模型 · 自评' : '大气受热过程模型', 20, top / 2);
         cx.font = '18px "Microsoft YaHei", sans-serif'; cx.textAlign = 'right';
         const g = (model.name || '').trim();
         const now = model.time ? new Date(model.time) : new Date();
         const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
         cx.fillText((g ? g + '　' : '') + ts, W - 20, top / 2);
-        cx.drawImage(img, 0, top, W, H);
+        cx.drawImage(img, 0, top, W, IH);
         const a = document.createElement('a');
-        a.download = `大气受热过程_${g || '模型'}_${ts.replace(/[: ]/g, '-')}.png`;
+        a.download = `大气受热过程_${g || '模型'}${model.self ? '_自评' : ''}_${ts.replace(/[: ]/g, '-')}.png`;
         a.href = cv.toDataURL('image/png');
         a.click();
         resolve();
@@ -237,6 +295,12 @@
     const a = w.arrows.map(x => [KEYS.indexOf(x.key), Math.round(x.x1), Math.round(x.y1), Math.round(x.x2), Math.round(x.y2), x.w || 0]);
     return send({ type: 'work', name: w.name, note: (w.note || '').slice(0, 300), cloud: w.showCloud === false ? 0 : 1, a });
   }
+  // 第二轮：自评分数 + 第一轮提交的原图（scores 按 RUBRIC 顺序排列）
+  function submitSelf(w) {
+    const a = w.arrows.map(x => [KEYS.indexOf(x.key), Math.round(x.x1), Math.round(x.y1), Math.round(x.x2), Math.round(x.y2), x.w || 0]);
+    const total = w.scores.reduce((t, v) => t + (+v || 0), 0);
+    return send({ type: 'self', name: w.name, scores: w.scores, total, cloud: w.showCloud === false ? 0 : 1, a });
+  }
   const submitScore = (name, scores, total, remark) => send({ type: 'score', name, scores, total, remark: remark || '' });
   const startLesson = () => send({ type: 'lesson' });
 
@@ -270,7 +334,7 @@
       const start = lessons.length ? lessons[lessons.length - 1].time : 0;
       // 只留本节课的消息，本机留存不会越积越多
       events = events.filter(e => e.time >= start);
-      const works = new Map(), scores = new Map();
+      const works = new Map(), scores = new Map(), selfs = new Map();
       for (const ev of events) {
         const o = ev.data;
         if (o.type === 'work') {
@@ -278,16 +342,24 @@
           const w = workFromWire(o, ev.time);
           w.versions = (prev ? prev.versions : 0) + 1;
           works.set(w.name, w);
+        } else if (o.type === 'self') {
+          const w = workFromWire(o, ev.time);
+          const sc = RUBRIC.map((r, i) => {
+            const v = Array.isArray(o.scores) ? o.scores[i] : null;
+            return Number.isInteger(v) ? clamp(v, 0, r.max) : null;
+          });
+          selfs.set(w.name, { ...w, scores: sc, total: sc.reduce((t, v) => t + (v || 0), 0), self: true });
         } else if (o.type === 'score') {
           scores.set(o.name, { scores: o.scores || {}, total: +o.total || 0, remark: String(o.remark || ''), time: ev.time });
         }
       }
-      return (state = { start, hasLesson: lessons.length > 0, works, scores });
+      return (state = { start, hasLesson: lessons.length > 0, works, scores, selfs });
     }
     return {
       add,
       get works() { return compute().works; },
       get scores() { return compute().scores; },
+      get selfs() { return compute().selfs; },
       get start() { return compute().start; },
       get hasLesson() { return compute().hasLesson; },
       get events() { compute(); return events; },
@@ -342,16 +414,37 @@
     return () => { closed = true; clearTimeout(retry); es && es.close(); };
   }
 
-  const DEFAULT_RUBRIC = [
-    { name: '要素完整', max: 4, hint: '6 种辐射过程是否齐全、没有多余' },
-    { name: '方向正确', max: 3, hint: '箭头起点、终点和方向是否符合辐射路径' },
-    { name: '粗细合理', max: 3, hint: '箭头粗细是否反映能量多少（如大气逆辐射小于地面辐射）' },
+  // 评分细则（来自 20261126_评价表.csv）：levels[v] 是得 v 分的标准
+  const RUBRIC = [
+    { name: '要素完整无遗漏', max: 1, levels: [
+      '少放任意一个箭头',
+      '6 个指定辐射箭头全部选取摆放，没有遗漏',
+    ] },
+    { name: '箭头位置与圈层匹配', max: 2, levels: [
+      '2 处及以上位置错位',
+      '仅 1 个箭头位置放错',
+      '6 个箭头全部放在正确空间位置',
+    ] },
+    { name: '箭头方向准确', max: 3, levels: [
+      '3 处及以上方向错误，其余正确',
+      '2 处方向错误，其余正确',
+      '1 处箭头方向错误，其余正确',
+      '所有箭头方向符合能量传递：太阳辐射向下；地面辐射向上；大气逆辐射向下；吸收箭头指向大气内部，无反向箭头',
+    ] },
+    { name: '箭头粗细体现辐射相对能量大小', max: 4, levels: [
+      '无正确关系',
+      '存在 3 处相对强弱关系出错',
+      '存在 2 处相对强弱关系出错',
+      '存在 1 处相对强弱关系出错',
+      '4 处粗细相对关系全部符合原理：①到达地面太阳辐射少于大气上界太阳辐射；②大气逆辐射细于地面长波辐射；③地面长波辐射、大气逆辐射均粗于射向宇宙的辐射；④大气吸收地面辐射粗于地面射向宇宙的辐射',
+    ] },
   ];
+  const RUBRIC_MAX = RUBRIC.reduce((t, r) => t + r.max, 0);
 
   window.GeoScene = {
     NS, W, H, LIB, CFG, W_MIN, W_MAX, SW, LW,
     el, clamp, aw, drawBase, drawArrowShape, labelSide, placeLabel, buildStaticSvg, exportPng, fmtTime,
-    submitWork, submitScore, startLesson, createClassState, subscribe, DEFAULT_RUBRIC,
+    submitWork, submitSelf, submitScore, startLesson, createClassState, subscribe, RUBRIC, RUBRIC_MAX, buildSelfSvg, wrap,
     testQuery: TEST_CH ? '&ch=' + TEST_CH : '',
   };
 })();
